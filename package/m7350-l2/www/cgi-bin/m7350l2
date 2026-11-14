@@ -141,7 +141,7 @@ failure_json() {
     fi
     printf ',"logs":{'
     separator=
-    for name in charon.out charon.log swanctl-initiate.log xl2tpd.log pppd.log; do
+    for name in charon.out charon.log swanctl-initiate.log swanctl-phase2-first.log xl2tpd.log pppd.log; do
         [ -s "$snapshot/$name" ] || continue
         printf '%s"%s":"%s"' "$separator" "$name" "$(jstr "$(cat "$snapshot/$name")")"
         separator=,

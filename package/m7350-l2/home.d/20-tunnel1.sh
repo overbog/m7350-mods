@@ -18,11 +18,27 @@ initiate_ike() {
     (umask 077; "$VPN/swanctl" --initiate --child l2tp --timeout 18 --uri "$vici" > "$VPN/swanctl-initiate.log" 2>&1)
 }
 
+# Retry Quick Mode once with a fresh IKE SA if the peer's DH public value
+# was rejected. Keep the configured proposals, PFS and cleartext guard.
+initiate_ike_recover() {
+    local termination
+    rm -f "$VPN/swanctl-phase2-first.log"
+    initiate_ike && return 0
+    grep -q 'IKE_SA .* established' "$VPN/swanctl-initiate.log" &&
+        grep -q 'unable to apply received KE value' "$VPN/swanctl-initiate.log" ||
+        return 1
+    (umask 077; cp "$VPN/swanctl-initiate.log" "$VPN/swanctl-phase2-first.log") || return 1
+    termination=$("$VPN/swanctl" --terminate --ike m7350-l2tp --timeout 5 --uri "$vici" 2>&1) ||
+        [ "$termination" = "terminate failed: no matching SAs to terminate found" ] || return 1
+    logger -p daemon.notice -t m7350-vpn -- 'Retrying phase 2 key exchange with a fresh IKE SA' 2>/dev/null || :
+    initiate_ike
+}
+
 ike_failure() {
     local reason
     # VICI and charon can print either the long notify name or its short name.
     # Emit only fixed diagnostic text, never an arbitrary peer log line.
-    reason=$(cat "$VPN/swanctl-initiate.log" "$VPN/charon.log" "$VPN/charon.out" 2>/dev/null |
+    reason=$(cat "$VPN/swanctl-initiate.log" 2>/dev/null |
         awk '
             /received|parsed/ && /NO_PROPOSAL_CHOSEN|N\(NO_PROP\)/ { notify="proposal" }
             /received|parsed/ && /AUTHENTICATION_FAILED|N\(AUTH_FAILED\)/ { notify="auth" }
@@ -34,6 +50,7 @@ ike_failure() {
             /parsed ID_PROT response/ && /\[ ID HASH[[:space:]]/ { authenticated=1 }
             /generating ID_PROT request/ && /\[ ID HASH[[:space:]]/ { sent_auth=1 }
             /IKE_SA .* established/ { authenticated=1 }
+            /unable to apply received KE value/ && authenticated { quick_mode_ke=1 }
             /received packet: from|parsed .* response/ { answered=1 }
             /retransmit|timed out|timeout|peer not responding|no response|not established after [0-9]+ms/ { timedout=1 }
             END {
@@ -41,6 +58,7 @@ ike_failure() {
                 else if (notify=="auth") print "VPN server rejected authentication (AUTHENTICATION_FAILED)"
                 else if (notify=="id") print "VPN server rejected the identity (INVALID_ID_INFORMATION)"
                 else if (notify=="selectors") print "VPN server rejected traffic selectors (TS_UNACCEPTABLE)"
+                else if (quick_mode_ke) print "phase 2 Diffie-Hellman public value was rejected"
                 else if (auth) print "authentication verification failed; check the pre-shared key"
                 else if (timedout && key_exchange && sent_auth && !authenticated)
                     print "server answered the key exchange but did not confirm authentication; check the pre-shared key"
@@ -191,7 +209,7 @@ start)
     done
     "$VPN/swanctl" --load-all --file "$VPN/etc/swanctl/swanctl.conf" --uri "$vici" >/dev/null ||
         start_error IKE "strongSwan could not load the profile over VICI"
-    initiate_ike || ike_failure
+    initiate_ike_recover || ike_failure
     esp_ready || start_error ESP "security associations were not installed in both directions"
     "$VPN/xl2tpd" -D -c "$VPN/xl2tpd.conf" -C "$VPN/l2tp-control" -p "$VPN/xl2tpd.pid" > "$VPN/xl2tpd.log" 2>&1 &
     i=0; while [ ! -p "$VPN/l2tp-control" ] && [ "$i" -lt 10 ]; do i=$((i+1)); sleep 1; done
@@ -251,7 +269,7 @@ resume)
         "$VPN/swanctl" --load-conns --file "$cfg.refresh" --uri "$vici" || exit 1
         mv "$cfg.refresh" "$cfg" || exit 1
     fi
-    esp_ready || initiate_ike || exit 1
+    esp_ready || initiate_ike_recover || exit 1
     esp_ready || exit 1
     if ! ppp_up; then
         ip link show dev ppp0 >/dev/null 2>&1 && exit 1

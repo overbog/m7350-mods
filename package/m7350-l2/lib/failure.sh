@@ -43,14 +43,14 @@ capture_start_failure() (
     # A conflicting VPN directory belongs to another session.
     if [ "${1:-}" != reason-only ] && [ -f "$RUN/tunnel1-owned" ]; then
         vpn_dir=${M7350_VPN_RUN:-/run/m7350-vpn}
-        for name in charon.out charon.log swanctl-initiate.log xl2tpd.log pppd.log; do
+        for name in charon.out charon.log swanctl-initiate.log swanctl-phase2-first.log xl2tpd.log pppd.log; do
             [ -f "$vpn_dir/$name" ] || continue
             filter_failure_log "$vpn_dir/$name" | tail -n 24 > "$work/$name"
         done
     fi
     snapshot=$RUN/last-failure
     rm -rf "$snapshot" && mv "$work" "$snapshot" || exit 1
-    for name in charon.out charon.log swanctl-initiate.log xl2tpd.log pppd.log; do
+    for name in charon.out charon.log swanctl-initiate.log swanctl-phase2-first.log xl2tpd.log pppd.log; do
         [ -s "$snapshot/$name" ] || continue
         LC_ALL=C awk '
             {
@@ -58,6 +58,7 @@ capture_start_failure() (
                 level = "info"
                 if (line ~ /retransmit|timed out|timeout|no response|not responding/ ||
                     line ~ /no suitable proposal|no_proposal_chosen|n\(no_prop\)/ ||
+                    line ~ /unable to apply received ke value|invalid dh public value size/ ||
                     line ~ /authentication.failed|authentication rejected|auth(entication)? failure|(^|[^a-z])failed([^a-z]|$)/)
                     level = "err"
                 print level, $0

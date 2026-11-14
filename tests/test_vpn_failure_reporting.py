@@ -62,6 +62,16 @@ case "$1:$SCENARIO" in
             echo 'IKE_SA m7350-l2tp[1] established'
         fi
         echo 'initiate failed: CHILD_SA not established after 18000ms'; exit 1 ;;
+    --terminate:quick_mode_ke|--terminate:quick_mode_recovery)
+        echo terminated >> "$M7350_L2_RUN/ike-attempts"; exit 0 ;;
+    --initiate:quick_mode_ke|--initiate:quick_mode_recovery)
+        echo initiate >> "$M7350_L2_RUN/ike-attempts"
+        if [ "$SCENARIO" = quick_mode_recovery ] && grep -Fxq terminated "$M7350_L2_RUN/ike-attempts"; then
+            echo 'CHILD_SA l2tp established'; exit 0
+        fi
+        echo 'IKE_SA m7350-l2tp[1] established'
+        echo 'unable to apply received KE value'
+        echo 'initiate failed: establishing CHILD_SA l2tp failed'; exit 1 ;;
     --initiate:unreachable|--initiate:silent_proposal)
         echo 'giving up after retransmits'; exit 1 ;;
     --initiate:ike_unknown) echo 'initiate failed'; exit 1 ;;
@@ -169,7 +179,7 @@ int main(int argc, char **argv)
                 *'d m7350'*) rm -f "$M7350_VPN_RUN/up" ;;
                 *) case "$SCENARIO" in
                     connect) exit 1 ;;
-                    vtep|step_start|step_check|step_silent) touch "$M7350_VPN_RUN/up" ;;
+                    vtep|step_start|step_check|step_silent|quick_mode_recovery) touch "$M7350_VPN_RUN/up" ;;
                 esac ;;
             esac''')
         executable(mock / 'auth', 'read token; [ "$token" = test-token ]')
@@ -283,6 +293,38 @@ int main(int argc, char **argv)
                              reason + '; previous boot did not reach stable; holding factory until a manual switch')
             if self.compiler:
                 subprocess.run([self.oled, status['last_error']], env=env, check=True)
+
+    def test_quick_mode_retry_is_bounded_and_uses_same_profile(self):
+        for scenario in ('quick_mode_recovery', 'quick_mode_ke', 'unreachable'):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                base, run, vpn, env = self.make_fixture(directory, scenario)
+                result = subprocess.run([base / 'bin/m7350-mode', 'set', 'vpn'],
+                                        env=env, capture_output=True, timeout=10)
+                attempts = run / 'ike-attempts'
+                if scenario == 'unreachable':
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(attempts.exists())
+                    continue
+                self.assertEqual(attempts.read_text().splitlines()[:3],
+                                 ['initiate', 'terminated', 'initiate'])
+                self.assertEqual(attempts.read_text().count('initiate'), 2)
+                if scenario == 'quick_mode_recovery':
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual((run / 'active').read_text().strip(), 'vpn')
+                    self.assertIn('esp_proposals = aes128-sha1-modp1024',
+                                  (vpn / 'etc/swanctl/swanctl.conf').read_text())
+                    self.assertIn('unable to apply received KE value',
+                                  (vpn / 'swanctl-phase2-first.log').read_text())
+                    subprocess.run([base / 'bin/m7350-mode', 'set', 'factory'],
+                                   env=env, capture_output=True, check=True, timeout=10)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual((run / 'active').read_text().strip(), 'factory')
+                    status = self.post(base, env, 'status')
+                    self.assertIn('phase 2 Diffie-Hellman public value was rejected',
+                                  status['last_error'])
+                    failure = run / 'last-failure' / 'swanctl-phase2-first.log'
+                    self.assertIn('unable to apply received KE value', failure.read_text())
 
     def test_failure_paths(self):
         cases = {
