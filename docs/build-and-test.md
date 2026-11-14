@@ -1,6 +1,6 @@
 # Build and bench procedure
 
-Use x86-64 Debian with Python 3.11 or later, Git, GNU coreutils and a verified Linaro 4.9.4 ARM cross compiler. This checkout builds the web patch and the ARM authentication and OLED helpers. Assembly still requires locally supplied ARM modules and VPN programs. It does not yet reproduce those components from source.
+Use x86-64 Debian with Python 3.11 or later, Git, GNU coreutils, a native C compiler with libc headers for tests, and a verified Linaro 4.9.4 ARM cross compiler. This checkout builds the web patch and the ARM authentication and OLED helpers. Assembly still requires locally supplied ARM modules and VPN programs. It does not yet reproduce those components from source.
 
 Prepare these inputs outside the repository:
 

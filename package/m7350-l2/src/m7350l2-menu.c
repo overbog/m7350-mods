@@ -215,7 +215,7 @@ static int list_oledd(int *pids, int max)
     } else {
         DIR *d = opendir("/proc");
         struct dirent *e;
-        char path[64], comm[32];
+        char path[sizeof e->d_name + sizeof "/proc//comm"], comm[32];
         if (!d)
             return 0;
         while (n < max && (e = readdir(d))) {
@@ -416,7 +416,7 @@ static void draw_qr(const struct wifi_qr *qr, const char *hint)
                 fill(origin + x * scale, origin + y * scale, scale, scale, WHITE);
     text_center(0, hint, WHITE);
     /* 16 characters fit; a longer SSID ends in '~'. */
-    snprintf(name, sizeof name, "%s", qr->ssid);
+    snprintf(name, sizeof name, "%.*s", (int)(sizeof name - 1), qr->ssid);
     if (strlen(qr->ssid) > sizeof name - 1)
         name[sizeof name - 2] = '~';
     text_center(FB_H - GLYPH_H, name, WHITE);
