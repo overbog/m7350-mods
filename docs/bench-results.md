@@ -105,3 +105,5 @@ After the final reboot test, removed the package, web overlay and boot hook. Aft
 ### OEM USB cable reconnect
 
 **2026-11-14, 17:56 UTC.** After reconnecting the USB cable, the host logged an attempt to power-cycle the port at 17:56:19 UTC and `unable to enumerate USB device` at 17:56:21 UTC. Repeated checks found no TP-Link USB device and no bound RNDIS network interface. The staging VM had no USB network interface, so the OEM web interface could not be tested over USB. The OEM SSID was visible in a fresh Wi-Fi scan. No router configuration was changed. The cause of the enumeration failure remains undetermined.
+
+**2026-11-14, 19:34 UTC, after a router restart.** The same USB port failed enumeration again at 19:34:33 UTC. The host still saw no TP-Link USB device or RNDIS interface, and the staging VM had no USB network interface. The OEM SSID reappeared in a fresh Wi-Fi scan. The web interface remained unverified over USB.
