@@ -90,13 +90,28 @@ attach() {
         bridge3) test -e /sys/class/net/bridge3/brif/rndis0 ;;
         *) return 1 ;;
     esac
-    test "$(ls "/sys/class/net/$bridge/brif")" = "$expected_l2"
-    test "$(ls /sys/class/net/bridge0/brif)" = "$expected_l3"
+    test "$(ls "/sys/class/net/$bridge/brif")" = "$expected_l2" || {
+        echo "Unexpected ports on bridge2 before VXLAN attach." >&2
+        return 1
+    }
+    # OEM can also keep the ECM USB function in bridge0 without a host.
+    # Both USB functions belong on the same bridge when USB is set to L3.
+    l3_ports=$(ls /sys/class/net/bridge0/brif)
+    if test "$usb_bridge" = bridge0; then
+        l3_ports=$(printf '%s\n' "$l3_ports" | sed '/^ecm0$/d')
+    fi
+    test "$l3_ports" = "$expected_l3" || {
+        echo "Unexpected ports on bridge0 before VXLAN attach: $(printf '%s' "$l3_ports" | tr '\n' ' ')." >&2
+        return 1
+    }
     test ! -e "/sys/class/net/$vx/master"
     test -z "$(ip -o addr show dev "$bridge" scope global)"
     test -z "$(ip -o addr show dev "$vx" scope global)"
     test "$(cat "/sys/class/net/$vx/mtu")" = 1310
-    test "$(cat "/sys/class/net/$vap/brport/state")" = 3
+    test "$(cat "/sys/class/net/$vap/brport/state")" = 3 || {
+        echo "The L2 Wi-Fi port is not forwarding." >&2
+        return 1
+    }
     if grep -q '^shortcut_fe_cm ' /proc/modules; then
         echo "Pause the OEM shortcut manager before attaching VXLAN." >&2
         return 1
