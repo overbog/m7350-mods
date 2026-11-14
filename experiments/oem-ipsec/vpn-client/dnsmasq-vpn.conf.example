@@ -1,0 +1,14 @@
+# This file is supplied explicitly, never replace /etc/dnsmasq.conf.
+port=1053
+listen-address=192.168.0.1
+bind-interfaces
+no-resolv
+no-hosts
+server=@VPN_DNS_IPV4@
+cache-size=0
+address=/tplinkmifi.net/192.168.0.1
+pid-file=/run/m7350-vpn/dnsmasq-vpn.pid
+log-facility=/run/m7350-vpn/dnsmasq-vpn.log
+log-queries
+user=nobody
+group=nogroup

@@ -1,0 +1,118 @@
+#!/bin/sh
+# SSH access to the M7350: dropbear, key-only, root, never from the LTE WAN.
+# usage: m7350-ssh start|stop|status
+#
+# - Listens on 0.0.0.0:22 (IPv4 only, so the LTE IPv6 address is never bound).
+# - LTE (rmnet+) is untrusted; every other interface is allowed.
+#   1. raw PREROUTING: DROP port 22 from rmnet+. Meant to survive OEM filter
+#      rebuilds, so there is no window while the filter table is redone.
+#   2. filter INPUT: DROP port 22 on rmnet+ (second layer), then ACCEPT port 22
+#      on every other interface (USB, Wi-Fi, ppp0/bridge2/VXLAN in home mode;
+#      the OEM INPUT only accepts 192.168.0.0/24 on bridge0).
+#   Fails closed: if the rules cannot be inserted, dropbear is not started.
+# - The OEM firewall is rebuilt after boot (seen 2026-11-10: our S99 rules were
+#   gone 24 s after boot) and may be again on LTE reconnects. A guard loop
+#   re-inserts the rules every 15 s. While they are missing the OEM INPUT DROP
+#   policy still blocks LTE; only access from outside bridge0 is lost.
+# - Password login is compiled out (localoptions.h in tools/build-dropbear.sh);
+#   -s and -g are passed as well. No TCP or agent forwarding.
+# - Keys: authorized_keys and the ed25519 host key live in $SSH (0700).
+# - Nothing outside /data and /run is written. Stop removes the rules.
+BASE=${M7350_L2_BASE:-/data/m7350-l2}
+SSH=$BASE/ssh
+DB=$BASE/lib/bin/dropbearmulti
+RUN=${M7350_L2_RUN:-/run/m7350-l2}
+GUARD_SECS=${M7350_SSH_GUARD_SECS:-15}
+PID=$RUN/dropbear.pid
+GUARD=$RUN/ssh-guard.pid
+LOG=$RUN/ssh.log
+LTE_DROP="-i rmnet+ -p tcp --dport 22 -j DROP"
+ALLOW="-p tcp --dport 22 -j ACCEPT"
+RAW="iptables -t raw"
+
+running() { [ -f "$PID" ] && kill -0 "$(cat "$PID")" 2>/dev/null; }
+
+raw_ok() { $RAW -C PREROUTING $LTE_DROP 2>/dev/null; }
+raw_on() { raw_ok || $RAW -I PREROUTING 1 $LTE_DROP; }
+
+filter_off() {
+    while iptables -C INPUT $ALLOW 2>/dev/null; do iptables -D INPUT $ALLOW; done
+    while iptables -C INPUT $LTE_DROP 2>/dev/null; do iptables -D INPUT $LTE_DROP; done
+}
+
+# raw first (fail closed), then the filter pair in order: DROP LTE, ACCEPT.
+rule_on() {
+    raw_on || return 1
+    filter_off
+    iptables -I INPUT 1 $LTE_DROP || return 1
+    iptables -I INPUT 2 $ALLOW
+}
+
+rule_off() {
+    filter_off
+    while raw_ok; do $RAW -D PREROUTING $LTE_DROP; done
+}
+
+rules_ok() { raw_ok && iptables -C INPUT $LTE_DROP 2>/dev/null && iptables -C INPUT $ALLOW 2>/dev/null; }
+
+guard_running() { [ -f "$GUARD" ] && kill -0 "$(cat "$GUARD")" 2>/dev/null; }
+
+guard() {
+    while sleep "$GUARD_SECS"; do
+        running || break
+        rules_ok && continue
+        what=$(raw_ok && echo filter || echo "raw+filter")
+        if rule_on; then
+            echo "$(cut -d' ' -f1 /proc/uptime) $what rules re-inserted" >> "$LOG"
+        else
+            echo "$(cut -d' ' -f1 /proc/uptime) rule insert failed; stopping dropbear" >> "$LOG"
+            kill "$(cat "$PID")" 2>/dev/null
+            break
+        fi
+    done
+    rm -f "$GUARD"
+}
+
+case "$1" in
+    start)
+        [ -x "$DB" ] || { echo "m7350-ssh: $DB missing" >&2; exit 1; }
+        [ -s "$SSH/authorized_keys" ] || { echo "m7350-ssh: no authorized_keys" >&2; exit 1; }
+        # dropbear refuses keys if any directory on the path is group/world writable.
+        chmod go-w "$BASE"
+        chown -R 0:0 "$SSH"; chmod 700 "$SSH"; chmod 600 "$SSH/authorized_keys"
+        mkdir -p "$RUN"
+        # Fail closed: without the LTE drop rule, do not listen at all.
+        rule_on || { echo "m7350-ssh: firewall rule failed; not started" >&2; rule_off; exit 1; }
+        if [ ! -s "$SSH/dropbear_ed25519_host_key" ]; then
+            "$DB" dropbearkey -t ed25519 -f "$SSH/dropbear_ed25519_host_key" >/dev/null 2>&1 || exit 1
+            chmod 600 "$SSH/dropbear_ed25519_host_key"
+        fi
+        if ! running; then
+            "$DB" dropbear -p 0.0.0.0:22 -s -g -j -k -D "$SSH" \
+                -r "$SSH/dropbear_ed25519_host_key" -P "$PID" || { rule_off; exit 1; }
+        fi
+        if ! guard_running; then
+            guard </dev/null >/dev/null 2>&1 &
+            echo $! > "$GUARD"
+        fi
+        ;;
+    stop)
+        guard_running && kill "$(cat "$GUARD")"
+        rm -f "$GUARD"
+        running && kill "$(cat "$PID")"
+        rm -f "$PID"
+        rule_off
+        ;;
+    status)
+        if running; then echo "dropbear: running pid $(cat "$PID")"; else echo "dropbear: stopped"; fi
+        if raw_ok; then echo "lte raw drop: on"; else echo "lte raw drop: OFF"; fi
+        if iptables -C INPUT $LTE_DROP 2>/dev/null; then echo "lte drop rule: on"; else echo "lte drop rule: OFF"; fi
+        $RAW -S PREROUTING | grep "dport 22"
+        if guard_running; then echo "guard: running pid $(cat "$GUARD")"; else echo "guard: stopped"; fi
+        [ -f "$LOG" ] && tail -3 "$LOG"
+        iptables -S INPUT | grep -n "dport 22"
+        [ -s "$SSH/dropbear_ed25519_host_key" ] &&
+            "$DB" dropbearkey -y -f "$SSH/dropbear_ed25519_host_key" 2>/dev/null | grep -i fingerprint
+        ;;
+    *) echo "usage: $0 start|stop|status" >&2; exit 1 ;;
+esac

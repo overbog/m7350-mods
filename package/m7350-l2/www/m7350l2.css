@@ -1,0 +1,205 @@
+.m7350-vpn-settings .section-content { overflow-wrap: anywhere; }
+.m7350-vpn-settings .content-label {
+    width: 12em;
+    max-width: 100%;
+    text-align: right;
+    vertical-align: middle;
+}
+.m7350-vpn-settings input[type=text],
+.m7350-vpn-settings input[type=password],
+.m7350-vpn-settings select {
+    max-width: 100%;
+    box-sizing: border-box;
+}
+.m7350-vpn-settings .content-action button {
+    max-width: 100%;
+}
+@media (max-width: 700px) {
+    .m7350-vpn-settings .content-label {
+        display: block;
+        width: auto;
+        text-align: left;
+        margin-bottom: 4px;
+    }
+    .m7350-vpn-settings .content-action { padding-left: 0; }
+}
+.m7350-vpn-settings .content-label { text-align: left; }
+.m7350-vpn-settings input[type=text],
+.m7350-vpn-settings input[type=password],
+.m7350-vpn-settings .dropdown { width: 232px; max-width: 100%; }
+.m7350-vpn-settings .dropdown { box-sizing: border-box; }
+.m7350-vpn-settings button.btn {
+    width: auto;
+    min-width: 90px;
+    padding-inline: 12px;
+    white-space: nowrap;
+}
+.m7350-vpn-settings .content-action {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-start;
+}
+.m7350-vpn-settings .content-action > span { flex-basis: 100%; }
+
+#m7350VpnStatus {
+    float: left;
+    clear: both;
+    width: 100%;
+    margin-top: 12px;
+    padding-bottom: 22px;
+    background: #f5f5f5;
+    border-radius: 5px;
+}
+#m7350VpnStatus .status-header { margin: 0; }
+#m7350VpnStatus dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 0;
+}
+#m7350VpnStatus .content-group.no-input {
+    display: grid;
+    grid-template-columns: 43% minmax(0, 1fr);
+    column-gap: 6px;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: 34px;
+    margin-right: 16px;
+    padding-block: 4px;
+}
+#statusContent #m7350VpnStatus dt { width: auto; margin: 0; }
+#m7350VpnStatus dd { margin: 0; overflow-wrap: anywhere; }
+#m7l2Failure { margin-top: 16px; }
+#m7l2FailureTime { margin-right: 1em; }
+#m7350VpnStatus .m7350-vpn-log-link { margin-right: 1em; }
+#tableSysLog .m7350-vpn-log-message { overflow-wrap: anywhere; }
+
+.m7350-vpn-settings .m7350-profile-section {
+    min-width: 0;
+    margin: 18px 0;
+    padding: 8px 0 10px;
+    border: 0;
+    border-top: 1px solid #dedfe0;
+}
+.m7350-profile-section legend {
+    padding: 0 8px 0 0;
+    font-weight: bold;
+}
+
+#m7l2DeleteDialog {
+    box-sizing: border-box;
+    width: 420px;
+    max-width: calc(100vw - 32px);
+    padding: 24px;
+    border: 1px solid #dedfe0;
+    border-radius: 6px;
+    color: #36444a;
+    background: #fff;
+}
+#m7l2DeleteDialog::backdrop { background: rgba(0, 0, 0, 0.38); }
+#m7l2DeleteDialog p { margin: 12px 0 20px; }
+#m7l2DeleteDialog .content-action { padding: 0; justify-content: flex-end; }
+
+/* The OEM desktop shell is 960px wide. Reflow it on the VPN and Status pages. */
+@media (max-width: 959px) {
+    body:has(.m7350-vpn-settings, #statusPage) :is(#top_layout .container, #top_menu, #content > #container) {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    body:has(.m7350-vpn-settings, #statusPage) :is(#header, #top_layout) { height: auto; }
+    body:has(.m7350-vpn-settings, #statusPage) #top_layout .container {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        padding: 0 12px;
+    }
+    body:has(.m7350-vpn-settings, #statusPage) #top_icon_layout {
+        display: flex;
+        flex-wrap: wrap;
+        height: auto;
+        gap: 0 8px;
+    }
+    body:has(.m7350-vpn-settings, #statusPage) #top_icon_layout > li { margin-left: 0; }
+    body:has(.m7350-vpn-settings, #statusPage) #top_menu {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        height: auto;
+        padding: 0 12px;
+    }
+    body:has(.m7350-vpn-settings, #statusPage) #top_menu::before,
+    body:has(.m7350-vpn-settings, #statusPage) #top_menu::after { content: none; }
+    body:has(.m7350-vpn-settings, #statusPage) #top_menu .img_logo { margin-top: 12px; }
+    body:has(.m7350-vpn-settings, #statusPage) #deviceName { margin-top: 28px; }
+    body:has(.m7350-vpn-settings, #statusPage) #logoutBtn { margin: 8px 0; }
+    body:has(.m7350-vpn-settings, #statusPage) #tabList {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-column: 1 / -1;
+        grid-row: 2;
+        margin: 0;
+    }
+    body:has(.m7350-vpn-settings, #statusPage) #tabList li { width: auto; height: 62px; margin: 0; }
+    body:has(.m7350-vpn-settings, #statusPage) #tabList li a { text-align: center; }
+    body:has(.m7350-vpn-settings, #statusPage) #tabList li i { margin: 8px auto 2px; }
+    body:has(.m7350-vpn-settings, #statusPage) #tabList li span { font-size: 14px; }
+    body:has(.m7350-vpn-settings, #statusPage) #tabCover { inset: auto 12px 0; width: auto; height: 62px; }
+    body:has(.m7350-vpn-settings, #statusPage) #content .pattern { display: none; }
+    body:has(.m7350-vpn-settings, #statusPage) #container { display: flex; flex-direction: column; }
+    body:has(.m7350-vpn-settings, #statusPage) :is(#leftmenu, #panelSections) {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    body:has(.m7350-vpn-settings, #statusPage) #panelSections { order: -1; margin-bottom: 12px; padding-inline: 16px; }
+    body:has(.m7350-vpn-settings, #statusPage) #leftmenu { padding: 0 12px; }
+    body:has(.m7350-vpn-settings, #statusPage) #helpPopup {
+        width: min(330px, calc(100% - 32px));
+        box-sizing: border-box;
+    }
+    .m7350-vpn-settings .content-group { margin-left: 0; margin-bottom: 12px; }
+    .m7350-vpn-settings .content-label { display: block; width: auto; margin: 0 0 4px; }
+    .m7350-vpn-settings :is(input[type=text], input[type=password], .dropdown) {
+        width: 100%;
+        margin-right: 0;
+    }
+    .m7350-vpn-settings .content-group > button { margin-top: 6px; }
+    .m7350-vpn-settings .content-action { padding-inline: 0; }
+
+    #container #statusPage {
+        width: 100%;
+        height: auto;
+        box-sizing: border-box;
+        padding: 16px;
+    }
+    #statusPage > .icon-help { margin: 0; }
+    #statusPage #statusContent {
+        display: grid;
+        gap: 12px;
+        overflow: visible;
+    }
+    #statusContent > :is(#connectionSection, #wifiSection, #statisticSection, #m7350VpnStatus) {
+        width: 100%;
+        min-width: 0;
+        height: auto;
+        margin: 0;
+        padding: 12px 16px;
+        box-sizing: border-box;
+        overflow-wrap: anywhere;
+    }
+    #statusPage #statusContent .status-header { padding: 0 0 6px; }
+    #statusPage #statusContent .content-group { margin-left: 0; }
+    #statusPage #statusContent .content-group.no-input { line-height: 1.5; padding-block: 4px; }
+    #statusPage #statusContent .content-group > .content-label { width: auto; margin-right: 8px; }
+    #statusContent #statisticSection .horizontal { width: auto; float: none; }
+    #statusContent #m7350VpnStatus dl {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    #statusPage #m7350VpnStatus .content-group.no-input {
+        display: block;
+        min-height: 0;
+        margin-right: 0;
+    }
+    #statusPage #statusContent #m7350VpnStatus dt { margin-right: 8px; }
+    #m7350VpnStatus dd {
+        display: inline;
+    }
+}

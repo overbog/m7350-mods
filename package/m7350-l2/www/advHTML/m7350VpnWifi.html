@@ -1,0 +1,47 @@
+<div class="section m7350-vpn-settings">
+    <div class="section-header"><span>Wi-Fi in VPN mode</span></div>
+    <div class="section-content">
+        <p>LTE uses the mobile connection directly. L3 routes through the VPN. L2 joins the home LAN.</p>
+        <p>Changes take effect the next time VPN is activated. Enable a custom password for any SSID. Otherwise it uses the OEM password.</p>
+        <div class="content-group">
+            <label class="content-label" for="m7l2HomeLte">LTE SSID</label>
+            <input id="m7l2HomeLte" type="text" maxlength="32"/>
+        </div>
+        <div class="content-group">
+            <label class="content-label" for="m7wifi-lte-custom">Custom LTE password</label>
+            <input id="m7wifi-lte-custom" type="checkbox"/>
+        </div>
+        <div class="content-group hide" id="m7wifi-lte-row">
+            <label class="content-label" for="m7wifi-lte-key">LTE password</label>
+            <input id="m7wifi-lte-key" type="password" maxlength="63" autocomplete="new-password"/>
+        </div>
+        <div class="content-group">
+            <label class="content-label" for="m7l2HomeL3">L3 SSID</label>
+            <input id="m7l2HomeL3" type="text" maxlength="32"/>
+        </div>
+        <div class="content-group">
+            <label class="content-label" for="m7wifi-l3-custom">Custom L3 password</label>
+            <input id="m7wifi-l3-custom" type="checkbox"/>
+        </div>
+        <div class="content-group hide" id="m7wifi-l3-row">
+            <label class="content-label" for="m7wifi-l3-key">L3 password</label>
+            <input id="m7wifi-l3-key" type="password" maxlength="63" autocomplete="new-password"/>
+        </div>
+        <div class="content-group">
+            <label class="content-label" for="m7l2HomeSsid">L2 SSID</label>
+            <input id="m7l2HomeSsid" type="text" maxlength="32"/>
+        </div>
+        <div class="content-group">
+            <label class="content-label" for="m7wifi-l2-custom">Custom L2 password</label>
+            <input id="m7wifi-l2-custom" type="checkbox"/>
+        </div>
+        <div class="content-group hide" id="m7wifi-l2-row">
+            <label class="content-label" for="m7wifi-l2-key">L2 password</label>
+            <input id="m7wifi-l2-key" type="password" maxlength="63" autocomplete="new-password"/>
+        </div>
+        <div class="content-action">
+            <button id="m7l2HomeSave" class="btn btn-success">Save</button>
+            <span id="m7l2HomeSaveMsg" role="status"></span>
+        </div>
+    </div>
+</div>

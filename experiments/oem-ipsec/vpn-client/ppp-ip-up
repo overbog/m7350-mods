@@ -1,0 +1,25 @@
+#!/bin/sh
+# pppd hook args: interface tty speed local remote ipparam.
+set -eu
+test "$1" = ppp0 && test "$6" = m7350-vpn || exit 0
+# Count successful PPP reconnects within this mode activation. The VPN
+# runtime directory is removed when the mode is stopped.
+(
+    umask 077
+    session=/run/m7350-vpn/ppp-session
+    count=$(sed -n '2p' "$session" 2>/dev/null || :)
+    case "$count" in ''|*[!0-9]*) count=0 ;; *) count=$((count + 1)) ;; esac
+    printf '%s\n%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$count" > "$session.tmp" &&
+        mv -f "$session.tmp" "$session"
+) || :
+if [ -n "${DNS1:-}" ]; then
+    umask 077
+    printf '%s\n' "$DNS1" > /run/m7350-vpn/peer-dns.tmp
+    mv -f /run/m7350-vpn/peer-dns.tmp /run/m7350-vpn/peer-dns
+else
+    rm -f /run/m7350-vpn/peer-dns
+fi
+test -e /run/m7350-vpn/routing-installed || exit 0
+ip route replace default dev ppp0 metric 10 table 735
+ip route flush cache
+date -u >> /run/m7350-vpn/ppp-route-events.log

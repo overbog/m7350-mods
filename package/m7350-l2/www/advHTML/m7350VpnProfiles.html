@@ -1,0 +1,124 @@
+<div class="section m7350-vpn-settings">
+    <div class="section-header"><span>VPN Profiles</span></div>
+    <div class="section-content">
+        <p>L2TP over IPsec provides routed access with NAT. Enable VXLAN only when the remote endpoint is configured. The selected profile is saved and used whenever VPN mode starts, including at startup.</p>
+        <div class="content-group">
+            <label class="content-label" for="m7l2Slot">Profile list</label>
+            <select id="m7l2Slot"></select>
+            <button id="m7l2Create" class="btn btn-info">Create</button>
+        </div>
+        <div class="content-group hide" id="m7l2NewProfile">
+            <label class="content-label" for="m7l2NewId">Profile ID</label>
+            <input id="m7l2NewId" type="text" maxlength="24" placeholder="e.g. office"/>
+            <button id="m7l2Cancel" class="btn btn-info">Cancel</button>
+        </div>
+        <div class="content-group hide" id="m7l2RenameProfile">
+            <label class="content-label" for="m7l2RenameId">New profile ID</label>
+            <input id="m7l2RenameId" type="text" maxlength="24"/>
+            <button id="m7l2RenameApply" class="btn btn-success" type="button">Apply name</button>
+        </div>
+        <div class="content-group">
+            <p>Selected for VPN: <span id="m7l2Selected">-</span></p>
+            <p>Active profile: <span id="m7l2Running">-</span></p>
+        </div>
+        <fieldset class="m7350-profile-section">
+            <legend>L3 VPN</legend>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-server">L2TP server (IPv4)</label>
+                <input id="m7vpn-server" type="text" maxlength="15"/>
+            </div>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-dns">VPN DNS override (IPv4)</label>
+                <input id="m7vpn-dns" type="text" maxlength="15" placeholder="Auto (from VPN server)"/>
+            </div>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-user">PPP username</label>
+                <input id="m7vpn-user" type="text" maxlength="64"/>
+            </div>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-password">PPP password</label>
+                <input id="m7vpn-password" type="password" maxlength="64" autocomplete="new-password"/>
+            </div>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-psk">IPsec pre-shared key</label>
+                <input id="m7vpn-psk" type="password" maxlength="128" autocomplete="new-password"/>
+            </div>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-mtu">PPP MTU override</label>
+                <input id="m7vpn-mtu" type="text" inputmode="numeric" maxlength="4" placeholder="Auto (up to 1360)"/>
+            </div>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-auth">PPP authentication</label>
+                <select id="m7vpn-auth"><option value="chap">CHAP</option><option value="pap">PAP</option><option value="mschapv2">MS-CHAPv2</option></select>
+            </div>
+            <details>
+                <summary>Advanced</summary>
+                <div class="content-group">
+                    <label class="content-label" for="m7vpn-ike-suite">IKE suite</label>
+                    <select id="m7vpn-ike-suite">
+                        <option value="aes128-sha1-modp2048">AES-128 / SHA-1 / DH 2048</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+                <div class="content-group hide" id="m7vpn-ike-custom">
+                    <label class="content-label" for="m7vpn-ike">Custom IKE proposals</label>
+                    <input id="m7vpn-ike" type="text" maxlength="96"/>
+                </div>
+                <div class="content-group">
+                    <label class="content-label" for="m7vpn-esp-suite">ESP suite</label>
+                    <select id="m7vpn-esp-suite">
+                        <option value="aes128-sha1-modp1024">AES-128 / SHA-1 / DH 1024</option>
+                        <option value="custom">Custom</option>
+                    </select>
+                </div>
+                <div class="content-group hide" id="m7vpn-esp-custom">
+                    <label class="content-label" for="m7vpn-esp">Custom ESP proposals</label>
+                    <input id="m7vpn-esp" type="text" maxlength="96"/>
+                </div>
+            </details>
+        </fieldset>
+        <fieldset class="m7350-profile-section">
+            <legend>L2 VPN</legend>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-l2">Enable L2 over VPN</label>
+                <input id="m7vpn-l2" type="checkbox"/>
+            </div>
+            <div id="m7vpn-l2-fields" class="hide">
+                <div class="content-group">
+                    <label class="content-label" for="m7vpn-vni">VXLAN VNI</label>
+                    <input id="m7vpn-vni" type="text" maxlength="8"/>
+                </div>
+                <div class="content-group">
+                    <label class="content-label" for="m7vpn-port">VXLAN UDP port</label>
+                    <input id="m7vpn-port" type="text" maxlength="5"/>
+                </div>
+            </div>
+        </fieldset>
+        <fieldset class="m7350-profile-section">
+            <legend>USB Port</legend>
+            <div class="content-group">
+                <label class="content-label" for="m7vpn-usb_network">USB network</label>
+                <select id="m7vpn-usb_network">
+                    <option value="lte" selected>LTE (mobile internet)</option>
+                    <option value="l3">L3 (VPN)</option>
+                    <option value="l2">L2 (remote LAN)</option>
+                </select>
+            </div>
+        </fieldset>
+        <div class="content-action">
+            <button id="m7l2Save" class="btn btn-success">Save</button>
+            <button id="m7l2Select" class="btn">Select for VPN</button>
+            <button id="m7l2Rename" class="btn hide" type="button" disabled>Rename</button>
+            <button id="m7l2Delete" class="btn hide" type="button" disabled>Delete</button>
+            <span id="m7l2SaveMsg" role="status"></span>
+        </div>
+        <dialog id="m7l2DeleteDialog" aria-labelledby="m7l2DeleteTitle" aria-describedby="m7l2DeleteWarning">
+            <h3 id="m7l2DeleteTitle">Delete VPN profile</h3>
+            <p id="m7l2DeleteWarning"></p>
+            <form method="dialog" class="content-action">
+                <button type="submit" value="cancel" class="btn" autofocus>Cancel</button>
+                <button type="submit" value="delete" class="btn btn-danger">Delete profile</button>
+            </form>
+        </dialog>
+    </div>
+</div>

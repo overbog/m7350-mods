@@ -1,0 +1,605 @@
+#!/bin/sh
+# CGI for the "VPN" page. POST, application/x-www-form-urlencoded.
+# Every request needs a valid OEM session (token + REMOTE_ADDR, checked by
+# the OEM libauth through m7350l2-auth). Inputs are validated against
+# whitelists and never evaluated.
+# Actions: status | set (mode) | autostart (state) | profile (provider fields)
+set -u
+export LC_ALL=C
+umask 077
+
+BASE=${M7350_L2_BASE:-/data/m7350-l2}
+RUN=${M7350_L2_RUN:-/run/m7350-l2}
+MODE_BIN=$BASE/bin/m7350-mode
+AUTH_BIN=${M7350_L2_AUTH:-$BASE/lib/bin/m7350l2-auth}
+PROFILE=$BASE/state/provider.conf
+SECRETS=$BASE/secrets
+HOME_PROFILE=$BASE/state/home.conf
+. "$BASE/lib/vpn-profile.sh"
+
+reply() {
+    printf 'Content-Type: application/json\r\nCache-Control: no-store\r\n\r\n%s\n' "$1"
+    exit 0
+}
+
+# JSON string escaping for values we print (quotes, backslashes, controls).
+jstr() {
+    # Character loop instead of gsub: busybox awk and other awks disagree on
+    # backslashes in gsub replacements.
+    printf '%s' "$1" | awk 'BEGIN { ORS = ""; bs = sprintf("%c", 92); q = sprintf("%c", 34) }
+        { if (NR > 1) print bs "n"
+          for (i = 1; i <= length($0); i++) {
+              c = substr($0, i, 1)
+              if (c == bs || c == q) print bs c
+              else if (c < " ") continue
+              else print c
+          } }'
+}
+
+# The login page and reconnect screen need only the mode and switch state.
+if [ "${REQUEST_METHOD:-}" = GET ]; then
+    case "$(cat "$RUN/active" 2>/dev/null || printf factory)" in
+        factory) mode=OEM ;;
+        vpn|home|provider) mode=VPN ;;
+        *) mode=Unavailable ;;
+    esac
+    case "${QUERY_STRING:-}" in
+        mode) reply "{\"mode\":\"$mode\"}" ;;
+        switch-state)
+            switching=false
+            [ ! -d "$RUN/lock" ] || switching=true
+            reply "{\"mode\":\"$mode\",\"switching\":$switching}"
+            ;;
+    esac
+fi
+[ "${REQUEST_METHOD:-}" = POST ] || reply '{"result":-1,"error":"POST only"}'
+len=${CONTENT_LENGTH:-0}
+case "$len" in ''|*[!0-9]*) reply '{"result":-1,"error":"bad length"}';; esac
+[ "$len" -le 4096 ] || reply '{"result":-1,"error":"body too large"}'
+body=$(dd bs=1 count="$len" 2>/dev/null)
+
+# Decode the form into "key<TAB>value" lines. Only the first value per key.
+fields=$(printf '%s' "$body" | awk 'BEGIN { RS = "&" }
+    function dec(s,   out, i, c, h) {
+        gsub(/\+/, " ", s); out = ""
+        for (i = 1; i <= length(s); i++) {
+            c = substr(s, i, 1)
+            if (c == "%" && i + 2 <= length(s)) {
+                h = toupper(substr(s, i + 1, 2))
+                out = out sprintf("%c", index("0123456789ABCDEF", substr(h, 1, 1)) * 16 - 16 + index("0123456789ABCDEF", substr(h, 2, 1)) - 1)
+                i += 2
+            } else out = out c
+        }
+        return out
+    }
+    { sub(/\r?\n$/, ""); p = index($0, "="); if (p == 0) next
+      k = dec(substr($0, 1, p - 1)); v = dec(substr($0, p + 1))
+      gsub(/[\t\r\n]/, "", v)
+      if (!(k in seen)) { seen[k] = 1; print k "\t" v } }')
+
+field() {
+    printf '%s\n' "$fields" | awk -F '\t' -v k="$1" '$1 == k { sub(/^[^\t]*\t/, ""); print; exit }'
+}
+
+token=$(field token)
+if [ -z "$token" ] || ! printf '%s\n' "$token" | "$AUTH_BIN" >/dev/null 2>&1; then
+    reply '{"result":-3,"error":"not authorised"}'
+fi
+
+charset_ok() {  # charset_ok <value> <allowed-class> <max-length>
+    [ -n "$1" ] && [ "${#1}" -le "$3" ] || return 1
+    case "$1" in *[!$2]*) return 1;; esac
+}
+
+printable_ok() {  # printable ASCII without quotes or backslash
+    [ -n "$1" ] && [ "${#1}" -le "$2" ] || return 1
+    case "$1" in *[!\ -~]*|*[\"\'\\]*) return 1;; esac
+}
+
+put() { printf '%s\n' "$2" > "$1.tmp.$$" && mv -f "$1.tmp.$$" "$1"; }
+
+conf() { [ -f "$PROFILE" ] && awk -F= -v k="$1" '$1 == k { sub(/^[^=]*=/, ""); print; exit }' "$PROFILE"; }
+
+provider_ready() {
+    for step in "$BASE"/provider.d/[0-9][0-9]-*.sh; do
+        [ -f "$step" ] && return 0
+    done
+    return 1
+}
+
+home_ssid() {
+    value=$(sed -n "$1" "$HOME_PROFILE" 2>/dev/null)
+    [ -n "$value" ] || value=$(sed -n "s/^$2=//p" "$BASE/etc/home.env")
+    printf '%s' "$value"
+}
+
+home_json() {
+    printf '{"ssid":"%s","ssid_l3":"%s","ssid_lte":"%s","user":"%s"' \
+        "$(jstr "$(home_ssid 1p SSID2)")" "$(jstr "$(home_ssid 2p SSID_L3)")" \
+        "$(jstr "$(home_ssid 3p SSID_LTE)")" "$(jstr "$(cat "$SECRETS/ppp.user" 2>/dev/null)")"
+    for entry in 'password:ppp.password' 'psk:ipsec.psk' 'wifi:wifi.password'; do
+        present=false
+        [ -s "$SECRETS/${entry#*:}" ] && present=true
+        printf ',"%s_set":%s' "${entry%:*}" "$present"
+    done
+    for entry in lte:1p l3:2p l2:3p; do
+        present=false
+        [ -z "$(wifi_custom_password "${entry#*:}")" ] || present=true
+        printf ',"wifi_%s_custom":%s' "${entry%:*}" "$present"
+    done
+    printf '}'
+}
+
+failure_json() {
+    snapshot=$RUN/last-failure
+    reason=$(head -n 1 "$snapshot/reason" 2>/dev/null)
+    failure_time=$(head -n 1 "$snapshot/time" 2>/dev/null)
+    printf '{"result":0,"reason":"%s","time":"%s"' "$(jstr "$reason")" "$(jstr "$failure_time")"
+    if [ "$(field summary)" = 1 ]; then
+        printf '}'
+        return
+    fi
+    printf ',"logs":{'
+    separator=
+    for name in charon.out charon.log swanctl-initiate.log xl2tpd.log pppd.log; do
+        [ -s "$snapshot/$name" ] || continue
+        printf '%s"%s":"%s"' "$separator" "$name" "$(jstr "$(cat "$snapshot/$name")")"
+        separator=,
+    done
+    printf '}}'
+}
+
+vpn_clients_json() {
+    if [ -d "$RUN/lock" ]; then
+        printf '{"result":0,"mode":"switching"}'
+        return
+    fi
+    case "$(head -n 1 "$RUN/active" 2>/dev/null)" in
+        vpn|home) ;;
+        *) printf '{"result":0,"mode":"oem"}'; return ;;
+    esac
+    net=${M7350_STATS_NET:-/sys/class/net}
+    wlan=${M7350_STATS_WLAN:-/proc}
+    arp=${M7350_CLIENT_ARP:-/proc/net/arp}
+    [ -r "$arp" ] || arp=/dev/null
+    printf '{"result":0,"mode":"vpn","networks":['
+    separator=
+    for binding in l3:bridge0:wlan0 l2:bridge2:wlan0-va0 lte:bridge3:wlan0-va0 lte:bridge3:wlan0-va1; do
+        role=${binding%%:*}
+        port=${binding#*:}
+        bridge=${port%%:*}
+        iface=${port#*:}
+        [ -e "$net/$bridge/brif/$iface" ] || continue
+        # Read the applied name from ZX, including when saved settings differ.
+        ssid=$(iwpriv "$iface" get_mib ssid 2>/dev/null | awk -F: '
+            NF == 2 {
+                n = split($2, bytes, / +/)
+                for (i = 1; i <= n; i++) {
+                    if (bytes[i] == "") continue
+                    if (bytes[i] !~ /^[0-9]+$/ || bytes[i] < 1 || bytes[i] > 255) break
+                    printf "%c", bytes[i]
+                }
+                exit
+            }')
+        printf '%s{"role":"%s","ssid":"%s","clients":' "$separator" "$role" "$(jstr "$ssid")"
+        separator=,
+        stations=$(cat "$wlan/$iface/sta_info" 2>/dev/null) || { printf 'null}'; continue; }
+        # L2 is bridged to the LAN. Report associated stations by MAC only.
+        neighbors=$arp
+        [ "$role" != l2 ] || neighbors=/dev/null
+        printf '%s\n' "$stations" | awk -v bridge="$bridge" -v role="$role" '
+            BEGIN {printf "["}
+            FILENAME == ARGV[1] {
+                if ($6 == bridge && $3 ~ /^0x[26]$/ && $1 ~ /^[0-9.]+$/)
+                    ip[tolower($4)] = $1
+                next
+            }
+            function number(value) {
+                return value ~ /^-?(0|[1-9][0-9]*)(\.[0-9]+)?$/ ? value : "null"
+            }
+            function station(    signal_dbm) {
+                if (mac == "" || seen[mac]++) return
+                # ZX PHY encodes negative power as 100 + dBm and smooths it
+                # per station. The boundary codes 0 and 100 are ambiguous.
+                signal_dbm = "null"
+                if (rssi ~ /^[1-9][0-9]?$/) signal_dbm = rssi - 100
+                printf "%s{\"mac\":\"%s\"", sep, mac
+                if (role != "l2") printf ",\"ip\":\"%s\"", ip[mac]
+                printf ",\"rssi\":%s,\"signal_dbm\":%s,\"tx_mbps\":%s,\"rx_mbps\":%s}", number(rssi), signal_dbm, number(tx), number(rx)
+                sep = ","
+            }
+            $2 == "stat_info..." {
+                station()
+                mac = rssi = tx = rx = ""
+            }
+            $1 == "hwaddr:" && length($2) == 12 && $2 !~ /[^[:xdigit:]]/ {
+                mac = tolower(substr($2,1,2))
+                for (i = 3; i <= 12; i += 2) mac = mac ":" tolower(substr($2,i,2))
+            }
+            $1 == "rssi:" {rssi = $2}
+            $1 == "current_tx_rate:" {tx = $NF}
+            $1 == "current_rx_rate:" {rx = $NF}
+            END {station(); printf "]"}' "$neighbors" -
+        printf '}'
+    done
+    printf ']}'
+}
+
+vpn_stats_json() {
+    net=${M7350_STATS_NET:-/sys/class/net}
+    wlan=${M7350_STATS_WLAN:-/proc}
+    vpn_run=${M7350_VPN_RUN:-/run/m7350-vpn}
+    active=$(head -n 1 "$RUN/active" 2>/dev/null)
+    state=off
+    reason=
+    profile=
+    server=
+    local_ip=
+    peer_ip=
+    since=
+    reconnects=null
+    l2=false
+    ppp_rx=null
+    ppp_tx=null
+    l2_rx=null
+    l2_tx=null
+    clients_l3=null
+    clients_lte=null
+    clients_l2=null
+    counter() {
+        n=$(cat "$net/$1/statistics/$2_bytes" 2>/dev/null)
+        case "$n" in ''|*[!0-9]*) printf null ;; *) printf '%s' "$n" ;; esac
+    }
+    clients() {
+        [ -r "$wlan/$1/sta_info" ] || { printf null; return; }
+        awk '$1=="hwaddr:" {n++} END {print n+0}' "$wlan/$1/sta_info" 2>/dev/null || printf null
+    }
+    case "$active" in
+        vpn|home)
+            state=disconnected
+            profile=$(head -n 1 "$RUN/vpn-profile-slot" 2>/dev/null)
+            config=$RUN/vpn-profile.conf
+            server=$(vpn_value "$config" server)
+            [ -n "$server" ] || server=$(vpn_value "$BASE/etc/home.env" VPN_SERVER)
+            vpn_ipv4 "$server" || server=
+            set -- $(ip -4 -o addr show dev ppp0 2>/dev/null |
+                awk '{for(i=1;i<NF;i++) {if($i=="inet"){split($(i+1),a,"/"); l=a[1]} if($i=="peer"){split($(i+1),a,"/"); p=a[1]}} if(l!=""){print l,p; exit}}')
+            if vpn_ipv4 "${1:-}"; then
+                state=connected
+                local_ip=$1
+                if vpn_ipv4 "${2:-}"; then peer_ip=$2; fi
+                since=$(sed -n '1p' "$vpn_run/ppp-session" 2>/dev/null)
+                ppp_rx=$(counter ppp0 rx)
+                ppp_tx=$(counter ppp0 tx)
+            fi
+            reconnects=$(sed -n '2p' "$vpn_run/ppp-session" 2>/dev/null)
+            case "$reconnects" in ''|*[!0-9]*) reconnects=null ;; esac
+            clients_l3=$(clients wlan0)
+            if [ "$(vpn_value "$config" l2)" = 1 ] || [ -d "$net/bridge2/brif/wlan0-va0" ]; then
+                clients_lte=$(clients wlan0-va1)
+                clients_l2=$(clients wlan0-va0)
+            else
+                clients_lte=$(clients wlan0-va0)
+            fi
+            if [ -e "$net/bridge2/brif/vxlan0" ]; then
+                l2=true
+                l2_rx=$(counter vxlan0 rx)
+                l2_tx=$(counter vxlan0 tx)
+            fi
+            ;;
+    esac
+    if [ "$state" != connected ]; then
+        reason=$(head -n 1 "$BASE/state/last_error" 2>/dev/null)
+        if [ -n "$reason" ] && [ -s "$RUN/last-failure/reason" ]; then
+            detail=$(head -n 1 "$RUN/last-failure/reason")
+            case "$reason" in "$detail"*) reason=$detail ;; esac
+        fi
+        [ -z "$reason" ] || state=failed
+    fi
+    printf '{"result":0,"state":"%s","reason":"%s","profile":"%s","server":"%s","local":"%s","peer":"%s","since":"%s","rx":%s,"tx":%s,"l2":%s,"vxlan_rx":%s,"vxlan_tx":%s,"clients":{"lte":%s,"l3":%s,"l2":%s},"reconnects":%s}' \
+        "$state" "$(jstr "$reason")" "$(jstr "$profile")" "$(jstr "$server")" \
+        "$(jstr "$local_ip")" "$(jstr "$peer_ip")" "$(jstr "$since")" "$ppp_rx" "$ppp_tx" \
+        "$l2" "$l2_rx" "$l2_tx" "$clients_lte" "$clients_l3" "$clients_l2" "$reconnects"
+}
+
+status_json() {
+    st=$(sh "$MODE_BIN" status 2>/dev/null)
+    sv() { printf '%s\n' "$st" | awk -F= -v k="$1" '$1 == k { sub(/^[^=]*=/, ""); print; exit }'; }
+    switching=false; [ -d "$RUN/lock" ] && switching=true
+    t1=down; ip -4 addr show dev ppp0 2>/dev/null | grep -q 'inet ' && t1=up
+    l2_tunnel=down; [ ! -e /sys/class/net/bridge2/brif/vxlan0 ] || l2_tunnel=up
+    t2=down; ip -4 addr show dev ppp1 2>/dev/null | grep -q 'inet ' && t2=up
+    pw=false; [ -s "$SECRETS/provider.password" ] && pw=true
+    psk=false; [ -s "$SECRETS/provider.psk" ] && psk=true
+    ready=false; provider_ready && ready=true
+    printf '{"result":0,"desired":"%s","active":"%s","active_profile":"%s","switching":%s,"autostart":"%s","safe_hold":"%s","last_error":"%s","tunnel1":"%s","l2_tunnel":"%s","provider_tunnel":"%s","profile":{"server":"%s","user":"%s","auth":"%s","ipsec":"%s","public_mode":"%s","public_prefix":"%s","mtu":"%s","password_set":%s,"psk_set":%s},"provider_available":%s,"home":%s}' \
+        "$(jstr "$(sv desired)")" "$(jstr "$(sv active)")" "$(jstr "$(sv active_profile)")" "$switching" \
+        "$(jstr "$(sv autostart)")" "$(jstr "$(sv safe_hold)")" "$(jstr "$(sv last_error)")" \
+        "$t1" "$l2_tunnel" "$t2" \
+        "$(jstr "$(conf SERVER)")" "$(jstr "$(conf USER)")" "$(jstr "$(conf AUTH)")" \
+        "$(jstr "$(conf IPSEC)")" "$(jstr "$(conf PUBLIC_MODE)")" "$(jstr "$(conf PUBLIC_PREFIX)")" \
+        "$(jstr "$(conf MTU)")" "$pw" "$psk" "$ready" "$(home_json)"
+}
+
+vpn_json() {
+    if [ -n "$1" ]; then
+        vpn_read "$1" || return 1
+    else
+        VPN_SERVER=; VPN_DNS=; VPN_USER=; VPN_AUTH=; VPN_MTU=
+        VPN_L2=0; VPN_VNI=; VPN_PORT=; VPN_IKE=; VPN_ESP=
+        VPN_PASS=; VPN_PSK=; VPN_USB=lte
+    fi
+    printf '{"result":0,"slot":"%s","selected":"%s",' "$1" "$(vpn_selected)"
+    printf '"usb_network":"%s",' "$(jstr "$VPN_USB")"
+    printf '"server":"%s","dns":"%s","user":"%s","auth":"%s","mtu":"%s",' \
+        "$(jstr "$VPN_SERVER")" "$(jstr "$VPN_DNS")" "$(jstr "$VPN_USER")" \
+        "$(jstr "$VPN_AUTH")" "$(jstr "$VPN_MTU")"
+    printf '"l2":"%s","vni":"%s","port":"%s","ike":"%s","esp":"%s",' \
+        "$(jstr "$VPN_L2")" "$(jstr "$VPN_VNI")" \
+        "$(jstr "$VPN_PORT")" "$(jstr "$VPN_IKE")" "$(jstr "$VPN_ESP")"
+    password_set=false; psk_set=false
+    [ -z "$VPN_PASS" ] || password_set=true
+    [ -z "$VPN_PSK" ] || psk_set=true
+    printf '"password_set":%s,"psk_set":%s,"profiles":[' "$password_set" "$psk_set"
+    sep=
+    for file in "$BASE"/state/vpn-*.conf; do
+        item=${file##*/vpn-}; item=${item%.conf}
+        if vpn_slot_exists "$item"; then printf '%s"%s"' "$sep" "$item"; sep=,; fi
+    done
+    printf ']}'
+}
+
+action=$(field action)
+case "$action" in
+vpn_log)
+    level=$(field level)
+    case "$level" in 0|1|2|3|4) ;; *) reply '{"result":-1,"error":"Invalid log level"}';; esac
+    entries=$(logread 2>/dev/null) || reply '{"result":-1,"error":"System log unavailable"}'
+    rows=$(printf '%s\n' "$entries" | awk -v filter="$level" '
+        BEGIN { levels["daemon.info"]=1; levels["daemon.notice"]=2;
+                levels["daemon.warn"]=3; levels["daemon.warning"]=3; levels["daemon.err"]=4 }
+        $6 == "m7350-vpn:" && $5 in levels && (!filter || levels[$5] == filter) {
+            stamp=$1 " " $2 " " $3; level=levels[$5]
+            sub(/^.* daemon\.[^[:space:]]+ m7350-vpn: /, "")
+            print stamp "\t" level "\t" $0
+        }' | tail -n 256)
+    result=$(printf '%s\n' "$rows" | while IFS="$(printf '\t')" read -r stamp severity message; do
+        [ -n "$stamp" ] || continue
+        printf ',{"time":"%s","level":%s,"message":"%s"}' "$(jstr "$stamp")" "$severity" "$(jstr "$message")"
+    done)
+    reply "{\"result\":0,\"entries\":[${result#,}]}"
+    ;;
+vpn_get|vpn_save|vpn_create|vpn_select|vpn_delete|vpn_rename)
+    if [ "$action" != vpn_get ]; then
+        mkdir -p "$RUN" && mkdir "$RUN/vpn-profile-write" 2>/dev/null ||
+            reply '{"result":-2,"error":"Another profile change is in progress"}'
+        trap 'rmdir "$RUN/vpn-profile-write"' EXIT
+        trap 'exit 1' HUP INT TERM
+    fi
+    slot=$(field slot)
+    if [ "$action" = vpn_rename ]; then
+        target=$(field new_slot)
+        vpn_slot_exists "$slot" || reply '{"result":-1,"error":"Profile not found"}'
+        vpn_slot_ok "$target" && [ ! -e "$BASE/state/vpn-$target.conf" ] ||
+            reply '{"result":-1,"error":"Use a unique profile ID (lowercase letters, digits or hyphens)"}'
+        mkdir "$RUN/lock" 2>/dev/null ||
+            reply '{"result":-2,"error":"Wait for the mode switch to finish"}'
+        trap 'rm -f "$RUN/lock/pid"; rmdir "$RUN/lock" "$RUN/vpn-profile-write"' EXIT
+        printf '%s\n' "$$" > "$RUN/lock/pid" ||
+            reply '{"result":-1,"error":"Could not lock the operating mode"}'
+        [ "$slot" != "$(cat "$RUN/vpn-profile-slot" 2>/dev/null)" ] ||
+            reply '{"result":-1,"error":"Stop using this VPN profile before renaming it"}'
+        old="$BASE/state/vpn-$slot.conf"
+        new="$BASE/state/vpn-$target.conf"
+        ln "$old" "$new" || reply '{"result":-1,"error":"Could not rename profile"}'
+        selection="$BASE/state/vpn-selected"
+        if [ "$slot" = "$(vpn_selected)" ] && ! put "$selection" "$target"; then
+            rm -f "$new"
+            reply '{"result":-1,"error":"Could not update profile selection"}'
+        fi
+        if ! rm "$old"; then
+            if [ "$target" != "$(vpn_selected)" ] || put "$selection" "$slot"; then
+                rm -f "$new"
+            fi
+            reply '{"result":-1,"error":"Could not remove the old profile ID"}'
+        fi
+        reply "$(vpn_json "$target")"
+    fi
+    if [ "$action" = vpn_delete ]; then
+        vpn_slot_exists "$slot" || reply '{"result":-1,"error":"Profile not found"}'
+        [ ! -d "$RUN/lock" ] || reply '{"result":-2,"error":"Wait for the mode switch to finish"}'
+        [ "$slot" != "$(cat "$RUN/vpn-profile-slot" 2>/dev/null)" ] ||
+            reply '{"result":-1,"error":"Stop using this VPN profile before deleting it"}'
+        if [ "$slot" = "$(vpn_selected)" ]; then
+            rm "$BASE/state/vpn-selected" || reply '{"result":-1,"error":"Could not clear profile selection"}'
+        fi
+        rm "$BASE/state/vpn-$slot.conf" || reply '{"result":-1,"error":"Could not delete profile"}'
+        reply "$(vpn_json "$(vpn_edit_slot)")"
+    fi
+    [ -n "$slot" ] || slot=$(vpn_selected)
+    if [ "$action" = vpn_get ] && [ -z "$slot" ]; then
+        reply "$(vpn_json "$(vpn_edit_slot)")"
+    fi
+    if [ "$action" = vpn_create ]; then
+        vpn_slot_ok "$slot" && ! vpn_slot_exists "$slot" ||
+            reply '{"result":-1,"error":"Use a unique profile ID (lowercase letters, digits or hyphens)"}'
+        VPN_PASS=; VPN_PSK=; VPN_USB=lte
+    else
+        vpn_read "$slot" || reply '{"result":-1,"error":"invalid profile slot"}'
+    fi
+    case "$action" in
+    vpn_save|vpn_create)
+        VPN_SERVER=$(field server); VPN_DNS=$(field dns); VPN_USER=$(field user)
+        VPN_AUTH=$(field auth); VPN_MTU=$(field mtu); VPN_L2=$(field l2)
+        VPN_VNI=$(field vni); VPN_PORT=$(field port)
+        VPN_IKE=$(field ike); VPN_ESP=$(field esp)
+        usb_network=$(field usb_network)
+        VPN_USB=${usb_network:-$VPN_USB}
+        vpn_usb_valid || reply '{"result":-1,"error":"Choose LTE or L3 for USB, or enable L2 for this profile"}'
+        pass=$(field password); psk=$(field psk)
+        VPN_PASS=${pass:-$VPN_PASS}; VPN_PSK=${psk:-$VPN_PSK}
+        vpn_validate || reply '{"result":-1,"error":"Invalid or incomplete VPN profile"}'
+        mkdir -p "$BASE/state" || reply '{"result":-1,"error":"could not save VPN profile"}'
+        if [ "$action" = vpn_create ]; then
+            draft="$BASE/state/.vpn-draft.$$"
+            if vpn_dump > "$draft" && ln "$draft" "$BASE/state/vpn-$slot.conf"; then
+                rm -f "$draft"
+            else
+                rm -f "$draft"
+                reply '{"result":-1,"error":"could not create profile"}'
+            fi
+        else
+            put "$BASE/state/vpn-$slot.conf" "$(vpn_dump)" ||
+                reply '{"result":-1,"error":"could not save VPN profile"}'
+        fi
+        ;;
+    vpn_select)
+        vpn_validate || reply '{"result":-1,"error":"Save a complete VPN profile first"}'
+        mkdir -p "$BASE/state" &&
+            put "$BASE/state/vpn-selected" "$slot" ||
+            reply '{"result":-1,"error":"could not select VPN profile"}'
+        ;;
+    esac
+    reply "$(vpn_json "$slot")"
+    ;;
+status)
+    reply "$(status_json)"
+    ;;
+vpn_stats)
+    reply "$(vpn_stats_json)"
+    ;;
+vpn_clients)
+    reply "$(vpn_clients_json)"
+    ;;
+last_failure)
+    reply "$(failure_json)"
+    ;;
+set)
+    mode=$(field mode)
+    case "$mode" in factory|vpn|home|provider) ;; *) reply '{"result":-1,"error":"invalid mode"}';; esac
+    if [ "$mode" = vpn ] && [ -z "$(vpn_selected)" ]; then
+        logger -p daemon.err -t m7350-vpn -- "Create and select a VPN profile first" 2>/dev/null || :
+        reply '{"result":-1,"error":"Create and select a VPN profile first"}'
+    fi
+    if [ "$mode" = provider ] && ! provider_ready; then
+        reply '{"result":-1,"error":"Provider mode is not installed"}'
+    fi
+    if [ -d "$RUN/lock" ]; then
+        logger -p daemon.err -t m7350-vpn -- "A mode switch is already running" 2>/dev/null || :
+        reply '{"result":-2,"error":"a switch is already running"}'
+    fi
+    # Switching can take a minute; run detached and let the page poll status.
+    # lighttpd caps CGI at 15 descriptors. Restore a normal limit for the
+    # detached worker so charon can open its VICI and kernel netlink sockets.
+    if ! (
+        ulimit -n 1024 || exit 1
+        sh "$MODE_BIN" set "$mode" </dev/null >/dev/null 2>&1 &
+    ); then
+        logger -p daemon.err -t m7350-vpn -- "Could not set VPN worker descriptor limit" 2>/dev/null || :
+        reply '{"result":-1,"error":"Could not start mode switch worker"}'
+    fi
+    reply '{"result":0,"started":true}'
+    ;;
+home_profile|wifi_profile)
+    ssid=$(field ssid); user=$(field user); password=$(field password)
+    if [ "$action" = wifi_profile ]; then user=; password=; fi
+    ssid_l3=$(field ssid_l3); ssid_lte=$(field ssid_lte)
+    psk=$(field psk); wifi=$(field wifi_password)
+    [ "$action" != wifi_profile ] || psk=
+    for name in "$ssid" "$ssid_l3" "$ssid_lte"; do
+        printable_ok "$name" 32 || reply '{"result":-1,"error":"invalid SSID"}'
+    done
+    if [ "$ssid" = "$ssid_l3" ] || [ "$ssid" = "$ssid_lte" ] || [ "$ssid_l3" = "$ssid_lte" ]; then
+        reply '{"result":-1,"error":"LTE, L3 and L2 need distinct SSIDs"}'
+    fi
+    if [ "$action" != wifi_profile ] || [ -n "$user" ]; then
+        charset_ok "$user" 'A-Za-z0-9@._+-' 64 || reply '{"result":-1,"error":"invalid user"}'
+    fi
+    if [ -n "$password" ]; then
+        printable_ok "$password" 64 || reply '{"result":-1,"error":"invalid password"}'
+    fi
+    if [ -n "$psk" ]; then
+        charset_ok "$psk" 'A-Za-z0-9._+@%-' 128 || reply '{"result":-1,"error":"invalid IPsec key characters"}'
+    fi
+    if [ -n "$wifi" ]; then
+        printable_ok "$wifi" 63 && [ "${#wifi}" -ge 8 ] ||
+            reply '{"result":-1,"error":"Wi-Fi password must be 8 to 63 characters"}'
+    fi
+    if [ "$action" = wifi_profile ] && [ -n "$(field custom_lte)" ]; then
+        for network in lte l3 l2; do
+            case "$network" in lte) line=1p;; l3) line=2p;; l2) line=3p;; esac
+            case "$(field "custom_$network")" in
+                0) key= ;;
+                1)
+                    key=$(field "key_$network")
+                    [ -n "$key" ] || key=$(wifi_custom_password "$line")
+                    printable_ok "$key" 63 && [ "${#key}" -ge 8 ] ||
+                        reply '{"result":-1,"error":"Enter an 8–63 character password for each enabled network"}'
+                    ;;
+                *) reply '{"result":-1,"error":"invalid Wi-Fi password setting"}' ;;
+            esac
+            case "$network" in lte) key_lte=$key;; l3) key_l3=$key;; l2) key_l2=$key;; esac
+        done
+        wifi=
+        mkdir -p "$SECRETS" && chmod 700 "$SECRETS" &&
+            put "$SECRETS/wifi-custom.conf" "$key_lte
+$key_l3
+$key_l2" || reply '{"result":-1,"error":"could not save Wi-Fi passwords"}'
+    fi
+    legacy_usb=$(sed -n '4p' "$HOME_PROFILE" 2>/dev/null)
+    mkdir -p "$BASE/state" "$SECRETS" && chmod 700 "$SECRETS" &&
+        { [ -z "$user" ] || put "$SECRETS/ppp.user" "$user"; } &&
+        { [ -z "$password" ] || put "$SECRETS/ppp.password" "$password"; } &&
+        { [ -z "$psk" ] || put "$SECRETS/ipsec.psk" "$psk"; } &&
+        { [ -z "$wifi" ] || put "$SECRETS/wifi.password" "$wifi"; } &&
+        put "$HOME_PROFILE" "$ssid
+$ssid_l3
+$ssid_lte
+$legacy_usb" ||
+        reply '{"result":-1,"error":"could not save home profile"}'
+    reply "$(status_json)"
+    ;;
+profile)
+    server=$(field server); user=$(field user); auth=$(field auth)
+    ipsec=$(field ipsec); pmode=$(field public_mode); prefix=$(field public_prefix)
+    mtu=$(field mtu); password=$(field password); psk=$(field psk)
+    charset_ok "$server" 'A-Za-z0-9.-' 253 || reply '{"result":-1,"error":"invalid server"}'
+    charset_ok "$user" 'A-Za-z0-9@._+-' 64 || reply '{"result":-1,"error":"invalid user"}'
+    case "$auth" in chap|pap|mschapv2) ;; *) reply '{"result":-1,"error":"invalid auth"}';; esac
+    case "$ipsec" in 0|1) ;; *) reply '{"result":-1,"error":"invalid ipsec"}';; esac
+    case "$pmode" in ipcp|routed) ;; *) reply '{"result":-1,"error":"invalid public mode"}';; esac
+    if [ "$pmode" = routed ]; then
+        echo "$prefix" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$' ||
+            reply '{"result":-1,"error":"invalid public prefix"}'
+    else
+        prefix=
+    fi
+    charset_ok "$mtu" '0-9' 4 && [ "$mtu" -ge 576 ] && [ "$mtu" -le 1500 ] ||
+        reply '{"result":-1,"error":"invalid mtu"}'
+    # Empty secret fields keep the stored value.
+    if [ -n "$password" ]; then
+        printable_ok "$password" 64 || reply '{"result":-1,"error":"invalid password"}'
+    fi
+    if [ -n "$psk" ]; then
+        printable_ok "$psk" 128 || reply '{"result":-1,"error":"invalid psk"}'
+    fi
+    [ "$ipsec" = 1 ] && [ -z "$psk" ] && [ ! -s "$SECRETS/provider.psk" ] &&
+        reply '{"result":-1,"error":"IPsec needs a pre-shared key"}'
+    mkdir -p "$BASE/state" "$SECRETS" && chmod 700 "$SECRETS" &&
+    put "$PROFILE" "SERVER=$server
+USER=$user
+AUTH=$auth
+IPSEC=$ipsec
+PUBLIC_MODE=$pmode
+PUBLIC_PREFIX=$prefix
+MTU=$mtu" &&
+    { [ -z "$password" ] || put "$SECRETS/provider.password" "$password"; } &&
+    { [ -z "$psk" ] || put "$SECRETS/provider.psk" "$psk"; } ||
+        reply '{"result":-1,"error":"could not save provider profile"}'
+    unset password psk
+    reply "$(status_json)"
+    ;;
+*)
+    reply '{"result":-1,"error":"unknown action"}'
+    ;;
+esac

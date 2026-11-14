@@ -1,0 +1,35 @@
+<div class="section m7350-vpn-settings">
+    <div class="section-header"><span>Operating Mode</span></div>
+    <div class="section-content">
+        <div class="content-group">
+            <label class="content-label" for="m7l2Mode">Mode</label>
+            <select id="m7l2Mode">
+                <option value="factory">VPN Off</option>
+                <option value="vpn">VPN On</option>
+            </select>
+        </div>
+        <div id="m7l2ActiveRow" class="content-group hide">
+            <span class="content-label">Running mode</span>
+            <span id="m7l2Active"></span>
+        </div>
+        <div id="m7l2TunnelRow" class="content-group hide">
+            <label class="content-label">Tunnels</label>
+            <span id="m7l2Tunnels">-</span>
+        </div>
+        <p>Connections may drop while switching modes.</p>
+        <div class="content-action">
+            <button id="m7l2Apply" class="btn btn-success" disabled>Save and apply</button>
+            <span id="m7l2SwitchMsg" role="status"></span>
+            <a id="m7l2SignIn" class="hide" href="login.html">Sign in</a>
+            <span id="m7l2Busy" class="hide">Switching, please wait…</span>
+        </div>
+        <details id="m7l2Failure">
+            <summary>Last failure</summary>
+            <p id="m7l2FailureReason" role="status"></p>
+            <p id="m7l2FailureDetails" class="hide">
+                <time id="m7l2FailureTime" class="hide"></time>
+                <a class="m7350-vpn-log-link" href="#Advanced/Device/SysLog?type=vpn">View VPN log</a>
+            </p>
+        </details>
+    </div>
+</div>

@@ -1,0 +1,51 @@
+#!/bin/sh
+# Boot hook for the M7350 mode switcher. The only file outside /data.
+# Removal: update-rc.d m7350-l2 remove; rm /etc/init.d/m7350-l2
+BASE=/data/m7350-l2
+BIN=$BASE/bin/m7350-mode
+WWW=/WEBSERVER/www
+
+# Web overlay: bind-mount each patched entry (www.mounts) over the OEM web
+# root, only if the OEM settings.min.js is the exact file the patch was built
+# from. Any mismatch leaves the OEM interface untouched.
+mounted() { grep -q " $1 " /proc/self/mountinfo; }
+
+www_mount() {
+    [ -f "$BASE/www.mounts" ] && [ -f "$BASE/www.oem-settings.sha256" ] || return 0
+    mounted "$WWW/settings.min.js" && return 0
+    want=$(cat "$BASE/www.oem-settings.sha256")
+    have=$(sha256sum "$WWW/settings.min.js" | cut -d' ' -f1)
+    [ "$want" = "$have" ] || { echo "m7350-l2: OEM web root changed; overlay skipped" >&2; return 0; }
+    while read -r rel; do
+        [ -n "$rel" ] && [ -e "$BASE/www/$rel" ] && [ -e "$WWW/$rel" ] || continue
+        mount -o bind "$BASE/www/$rel" "$WWW/$rel"
+    done < "$BASE/www.mounts"
+}
+
+www_umount() {
+    [ -f "$BASE/www.mounts" ] || return 0
+    for rel in $(awk '{a[NR]=$0} END {for (i = NR; i > 0; i--) print a[i]}' "$BASE/www.mounts"); do
+        mounted "$WWW/$rel" && umount "$WWW/$rel"
+    done
+}
+
+case "$1" in
+    start)
+        www_mount
+        [ -x "$BIN" ] || exit 0
+        # OLED menu: idle until MENU is held; starts after key_detect and oledd.
+        if [ -x "$BASE/lib/bin/m7350l2-menu" ] && ! pidof m7350l2-menu >/dev/null; then
+            ( "$BASE/lib/bin/m7350l2-menu" >/dev/null 2>&1 & )
+        fi
+        # SSH (dropbear, key-only, never on LTE) once keys are installed.
+        if [ -x "$BASE/bin/m7350-ssh" ] && [ -s "$BASE/ssh/authorized_keys" ]; then
+            "$BASE/bin/m7350-ssh" start >/dev/null 2>&1
+        fi
+        # Background, so a slow mode never delays the OEM boot.
+        ( "$BIN" boot >/dev/null 2>&1 & )
+        ;;
+    stop) ;;
+    www-umount) www_umount ;;
+    *) echo "usage: $0 {start|stop|www-umount}" >&2; exit 1 ;;
+esac
+exit 0

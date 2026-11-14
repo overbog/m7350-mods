@@ -1,0 +1,6 @@
+#!/bin/sh
+# Kernel removes the dead PPP route; the terminal blackhole remains.
+test "$1" = ppp0 && test "$6" = m7350-vpn || exit 0
+rm -f /run/m7350-vpn/peer-dns
+ip route flush cache
+date -u >> /run/m7350-vpn/ppp-route-events.log

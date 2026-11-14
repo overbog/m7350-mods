@@ -1,0 +1,5 @@
+lib/ko/
+lib/bin/
+lib/research/
+lib/MANIFEST.sha256
+secrets/

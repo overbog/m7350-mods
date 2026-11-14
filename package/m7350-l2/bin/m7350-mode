@@ -1,0 +1,182 @@
+#!/bin/sh
+# M7350 mode switcher: factory | home | provider.
+# Single entry point for the web CGI, the OLED menu and the boot hook.
+# POSIX sh for busybox ash. Never writes outside BASE (persistent) and RUN (RAM).
+set -u
+
+BASE=${M7350_L2_BASE:-/data/m7350-l2}
+RUN=${M7350_L2_RUN:-/run/m7350-l2}
+STABLE_SECS=${M7350_L2_STABLE_SECS:-300}
+MODES="factory vpn home provider"
+STATE=$BASE/state
+. "$BASE/lib/failure.sh"
+
+mkdir -p "$STATE" "$RUN" 2>/dev/null
+
+log() {
+    priority=$1; shift
+    logger -p "daemon.$priority" -t m7350-vpn -- "$*" 2>/dev/null || :
+
+    printf '%s %s\n' "$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo -)" "$*" >> "$RUN/log"
+}
+
+# Atomic small-file write: write a temp file, then rename over the target.
+put() {
+    printf '%s\n' "$2" > "$1.tmp.$$" && mv -f "$1.tmp.$$" "$1"
+}
+
+get() {
+    if [ -f "$1" ]; then head -n1 "$1"; else printf '%s\n' "$2"; fi
+}
+
+valid_mode() {
+    for m in $MODES; do [ "$m" = "$1" ] && return 0; done
+    return 1
+}
+
+lock() {
+    if mkdir "$RUN/lock" 2>/dev/null; then
+        echo $$ > "$RUN/lock/pid"
+        return 0
+    fi
+    holder=$(cat "$RUN/lock/pid" 2>/dev/null)
+    if [ -n "$holder" ] && ! kill -0 "$holder" 2>/dev/null; then
+        rm -rf "$RUN/lock"
+        mkdir "$RUN/lock" 2>/dev/null && { echo $$ > "$RUN/lock/pid"; return 0; }
+    fi
+    echo "busy: another switch is running (pid ${holder:-?})" >&2
+    return 1
+}
+
+unlock() { rm -rf "$RUN/lock"; }
+
+driver() {  # driver <mode> <verb>
+    sh "$BASE/modes/$1.sh" "$2"
+}
+
+fail() {
+    (umask 077; put "$STATE/last_error" "$*")
+    log err "$*"
+    echo "error: $*" >&2
+}
+
+# The single switching path used by every caller.
+switch_to() {
+    target=$1
+    rm -f "$RUN/start-error"
+    # Validate before tearing down the active mode.
+    if [ "$target" = vpn ]; then
+        if ! sh "$BASE/modes/vpn.sh" validate; then
+            reason="Profile: select a complete VPN profile with compatible USB settings"
+            record_start_error "$reason" && capture_start_failure reason-only
+            fail "$reason"
+            return 1
+        fi
+    fi
+    current=$(get "$RUN/active" factory)
+    log info "switch $current -> $target"
+    if [ "$current" != factory ]; then
+        if ! driver "$current" stop; then
+            put "$RUN/active" dirty
+            fail "stop of $current failed; state is mixed, not starting $target"
+            return 1
+        fi
+    fi
+    if ! driver factory check; then
+        put "$RUN/active" dirty
+        fail "objects remain after stopping $current; not starting $target"
+        return 1
+    fi
+    put "$RUN/active" factory
+    if [ "$target" = factory ]; then
+        rm -f "$STATE/last_error"
+        log info "active factory"
+        return 0
+    fi
+    if driver "$target" start; then
+        put "$RUN/active" "$target"
+        put "$STATE/mode" "$target"
+        rm -f "$STATE/last_error"
+        log info "active $target"
+        return 0
+    fi
+    if [ ! -s "$RUN/start-error" ]; then
+        record_start_error "Profile: could not prepare the runtime configuration for $target" &&
+            capture_start_failure reason-only
+    fi
+    start_error=$(get "$RUN/start-error" "Startup: could not start $target")
+    # The stop driver can reset the router; save the cause before calling it,
+    # including errors that occurred before the startup steps took control.
+    (umask 077; put "$STATE/last_error" "$start_error") || :
+    driver "$target" stop
+    if driver factory check; then
+        put "$RUN/active" factory
+        fail "$start_error; reverted to factory"
+    else
+        put "$RUN/active" dirty
+        fail "$start_error; cleanup is incomplete"
+    fi
+    return 1
+}
+
+cmd_set() {
+    valid_mode "${1:-}" || { echo "usage: $0 set {$MODES}" >&2; return 2; }
+    lock || return 1
+    # A reset during VPN teardown must come back in the requested OEM mode.
+    if [ "$1" = factory ] && ! put "$STATE/mode" factory; then
+        unlock
+        echo "error: could not save OEM mode" >&2
+        return 1
+    fi
+    rm -f "$STATE/safe_hold"
+    switch_to "$1"; rc=$?
+    unlock
+    return $rc
+}
+
+cmd_status() {
+    echo "desired=$(get "$STATE/mode" factory)"
+    echo "active=$(get "$RUN/active" factory)"
+    echo "active_profile=$(get "$RUN/vpn-profile-slot" '')"
+    echo "autostart=on"
+    echo "safe_hold=$([ -e "$STATE/safe_hold" ] && echo on || echo off)"
+    echo "last_error=$(get "$STATE/last_error" '')"
+}
+
+# Called once per boot by the init hook, in the background.
+cmd_boot() {
+    put "$RUN/active" factory
+    if [ -e "$STATE/safe_hold" ]; then
+        log info "boot: safe hold set, staying factory"
+        return 0
+    fi
+    desired=$(get "$STATE/mode" factory)
+    valid_mode "$desired" || desired=factory
+    if [ "$desired" = factory ]; then
+        rm -f "$STATE/boot_pending"
+        return 0
+    fi
+    if [ -e "$STATE/boot_pending" ]; then
+        # The previous boot never reached the stable mark: crash, hang or reboot.
+        rm -f "$STATE/boot_pending"
+        put "$STATE/safe_hold" "previous boot did not reach stable"
+        previous_error=$(get "$STATE/last_error" '')
+        fail "${previous_error:+$previous_error; }previous boot did not reach stable; holding factory until a manual switch"
+        return 1
+    fi
+    put "$STATE/boot_pending" "$desired"
+    lock || return 1
+    switch_to "$desired"; rc=$?
+    unlock
+    sleep "$STABLE_SECS"
+    rm -f "$STATE/boot_pending"
+    log info "boot: stable mark reached"
+    return $rc
+}
+
+case "${1:-}" in
+    set) shift; cmd_set "$@" ;;
+    status) cmd_status ;;
+    boot) cmd_boot ;;
+    *) echo "usage: $0 {status|set MODE|boot}  MODE: $MODES" >&2; exit 2 ;;
+esac
