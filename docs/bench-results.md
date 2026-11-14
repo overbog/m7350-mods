@@ -17,7 +17,7 @@ Clean VM manifest hashes:
 - `PACKAGE.sha256`: `724bd490cb5fce95bb008f0059088f3251a4360e6523270c8dec8332bbf7867e`
 - `lib/MANIFEST.sha256`: `fef56bae5ed678b89c5e19d26353400210adfb31b5e8940156c0b02350f76a5d`
 
-Fresh installation and reboot were outside the update run above; see the separate test below. Success against a real VPN peer was not tested with this candidate. The package build still needs a from-source path for the legacy dependencies before distribution. An isolated update and OEM return do not establish those results.
+Fresh installation and reboot were outside the update run above; see the separate test below. A real VPN peer was outside the update run; see the later Home test. The package build still needs a from-source path for the legacy dependencies before distribution. An isolated update and OEM return do not establish those results.
 
 
 ## Clean install, reboot and removal
@@ -33,3 +33,17 @@ Physical M7350(EU) v5.2 with OEM 1.0.10 Build 181220 Rel.1066n and the same clea
 | OEM settings and access | Pass. Ten of eleven selected OEM configuration files were byte-identical to the backup. The only changes in the eleventh file, `netmanager`, were its `hw_time` and `sys_time` fields. Removed the temporary USB management hook, files and firewall rules. From the USB host, TCP 22, 23 and 2222 no longer accepted connections and the stock admin login still worked. |
 
 Served OEM `settings.min.js` SHA-256: `3632d8302159b5913c4cbd01c3a6a626905c1fe7daff3cd0f6cc14f7a832d374`. The candidate served `1d225254b99e36919957c7e3e137195b0b9d3a6c93c853babf8b5826a412fe6d` both before and after reboot. The router was left in OEM with the research package removed. Wi-Fi association by a separate client and automatic VPN connection to a real peer were out of scope for this run.
+
+## Home VPN with L2 after reboot
+
+**2026-11-14, candidate `e3a3b1a`: manual startup passed; automatic reconnection failed.** Reinstalled the clean VM build and verified both manifests. Restored only the bench Home profile from the private backup, enabled L2 and set USB to L3 for management. The VPN peer was observed independently; no changes were made to its configuration.
+
+| Step (UTC) | Observation |
+| --- | --- |
+| 16:02:40, before reboot | Home was active with negotiated PPP addresses, and the router received 4/4 ping replies from the PPP peer. `vxlan0` was up on `bridge2` with the L2 Wi-Fi interface. Both endpoints counted received and transmitted VXLAN frames. A separate Wi-Fi client joined the L2 SSID and obtained a lease from the remote LAN. The peer's independently initiated PPP ping to the router received 0/3 replies. |
+| 16:03:16, reboot requested | The boot ID changed. The saved Home profile started automatically at 14.22 seconds of device uptime, without a manual mode switch. The old PPP session closed on the peer at 16:03:48. |
+| 16:03:55–16:03:56, automatic negotiation | Both logs showed that IKEv1 phase 1 succeeded. In phase 2, strongSwan selected the ESP proposal with MODP1024, reported `unable to apply received KE value`, and failed to establish `CHILD_SA 'l2tp'`. The peer deleted the new IKE SA. No new PPP session or VXLAN datapath came up. |
+| After failure | Runtime reverted to OEM. The saved mode remained VPN until explicitly switched off. The summary classified the error as an IKE timeout, while the detailed log located it at the Diffie–Hellman exchange for phase 2 (PFS). Why the received key exchange value could not be applied is unconfirmed. |
+| Removal | Pass. Switched to VPN Off, uninstalled the package and rebooted. Verified the OEM web fingerprint and login, original bridge membership, no PPP/VXLAN or package hooks, and no temporary SSH or Telnet listeners. |
+
+Only one boot with Home enabled was attempted. This candidate should not be described as automatically reconnecting after reboot.
