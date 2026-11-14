@@ -22,6 +22,10 @@ PKG = Path(__file__).resolve().parents[1] / 'package' / 'm7350-l2'
 IP = r'''
 case "$*" in
     'route get '*)
+        if [ "$SCENARIO" = boot_recovery ] && [ ! -e "$M7350_L2_RUN/lte-queried" ]; then
+            touch "$M7350_L2_RUN/lte-queried"
+            exit 0
+        fi
         [ "$SCENARIO" = no_lte ] || echo 'dev rmnet_data0 src 192.0.2.2' ;;
     '-4 route show exact '*)
         [ "$SCENARIO" = pin ] || echo '198.51.100.1 dev rmnet_data0' ;;
@@ -175,10 +179,18 @@ int main(int argc, char **argv)
         executable(mock / 'logread', r'cat "$M7350_L2_RUN/syslog"')
         executable(mock / 'sleep', 'exec /bin/sleep 0.01')
         executable(mock / 'timeout', r'''
-            case "$5" in
-                *'d m7350'*) rm -f "$M7350_VPN_RUN/up" ;;
+            case "${8:-}:$5" in
+                d:*|*'d m7350'*) rm -f "$M7350_VPN_RUN/up" ;;
                 *) case "$SCENARIO" in
                     connect) exit 1 ;;
+                    boot_recovery|boot_reject)
+                        echo connect >> "$M7350_L2_RUN/ppp-attempts"
+                        if [ "$SCENARIO" = boot_recovery ] && [ -f "$M7350_VPN_RUN/pppd-first.log" ]; then
+                            touch "$M7350_VPN_RUN/up"
+                        else
+                            echo 'CHAP authentication failed' > "$M7350_VPN_RUN/pppd.log"
+                        fi ;;
+
                     vtep|step_start|step_check|step_silent|quick_mode_recovery) touch "$M7350_VPN_RUN/up" ;;
                 esac ;;
             esac''')
@@ -325,6 +337,30 @@ int main(int argc, char **argv)
                                   status['last_error'])
                     failure = run / 'last-failure' / 'swanctl-phase2-first.log'
                     self.assertIn('unable to apply received KE value', failure.read_text())
+
+    def test_boot_waits_for_lte_and_retries_ppp_only_once(self):
+        for scenario, verb, attempts, success in (
+            ('boot_recovery', 'boot', 2, True),
+            ('boot_reject', 'boot', 2, False),
+            ('boot_reject', 'set', 1, False),
+        ):
+            with self.subTest(scenario=scenario, verb=verb), tempfile.TemporaryDirectory() as directory:
+                base, run, _, env = self.make_fixture(directory, scenario)
+                (base / 'state/mode').write_text('vpn\n')
+                args = [verb] if verb == 'boot' else ['set', 'vpn']
+                result = subprocess.run([base / 'bin/m7350-mode', *args], env=env,
+                                        capture_output=True, timeout=10)
+                self.assertEqual(result.returncode == 0, success, result.stderr)
+                self.assertEqual((run / 'ppp-attempts').read_text().splitlines(),
+                                 ['connect'] * attempts)
+                if success:
+                    self.assertIn('LTE source IPv4 ready after waiting 1s', (run / 'syslog').read_text())
+                    self.assertEqual((run / 'active').read_text().strip(), 'vpn')
+                else:
+                    failure = self.post(base, env, 'last_failure')
+                    self.assertIn('rejected PAP/CHAP authentication', failure['reason'])
+                    self.assertEqual('after boot retry' in failure['reason'], verb == 'boot')
+                    self.assertEqual('pppd-first.log' in failure['logs'], verb == 'boot')
 
     def test_failure_paths(self):
         cases = {

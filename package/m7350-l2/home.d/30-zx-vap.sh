@@ -58,6 +58,59 @@ stop_oem_wps_socket_holders() {
     return 1
 }
 
+wlanmgr_diagnostics() {
+    local pid task state wait_channel
+    for pid in $(pidof wlanmgr); do
+        for task in /proc/"$pid"/task/*; do
+            state=$(awk '/^State:/ { print $2 }' "$task/status" 2>/dev/null)
+            wait_channel=$(cat "$task/wchan" 2>/dev/null)
+            [ -n "$state" ] || continue
+            logger -p daemon.warning -t m7350-vpn -- \
+                "wlanmgr PID $pid thread ${task##*/} state=$state wchan=${wait_channel:-unknown}" 2>/dev/null || :
+        done
+    done
+}
+
+wait_wlanmgr_exit() {
+    local seconds=$1
+    while pidof wlanmgr >/dev/null; do
+        [ "$seconds" -gt 0 ] || return 1
+        seconds=$((seconds - 1))
+        sleep 1
+    done
+}
+
+stop_wlanmgr() {
+    local original pid blocked=0
+    original=$(pidof wlanmgr)
+    [ -n "$original" ] || return 0
+    sh "$RUN/oem-init" stop || :
+    wait_wlanmgr_exit 12 && return 0
+    wlanmgr_diagnostics
+    for pid in $(pidof wlanmgr); do
+        case " $original " in
+            *" $pid "*) ;;
+            *) say "wlanmgr respawned while the OEM init script was held"; return 1 ;;
+        esac
+        [ "$(readlink "/proc/$pid/exe")" = /usr/bin/wlanmgr ] || continue
+        if awk '/^State:/ && $2 == "D" { blocked=1 } END { exit !blocked }' \
+                /proc/"$pid"/task/*/status 2>/dev/null; then
+            blocked=1
+            continue
+        fi
+        logger -p daemon.warning -t m7350-vpn -- \
+            "wlanmgr PID $pid did not exit after SIGTERM; sending SIGKILL" 2>/dev/null || :
+        kill -KILL "$pid" 2>/dev/null || :
+    done
+    wait_wlanmgr_exit 5 && return 0
+    if [ "$blocked" = 1 ]; then
+        say "wlanmgr did not stop: a thread is blocked in the kernel"
+    else
+        say "wlanmgr did not exit after SIGTERM and SIGKILL"
+    fi
+    return 1
+}
+
 configure_ap_security() {
     local iface=$1 key=$2 kv
     # ZX uses PSK_WPA2=2 and the CCMP-only cipher mask 8.
@@ -139,9 +192,7 @@ HOLD
     chmod 700 "$RUN/hold-init"
     cp "$init" "$RUN/oem-init"
     mount -o bind "$RUN/hold-init" "$init" || exit 1
-    sh "$RUN/oem-init" stop
-    i=0; while pidof wlanmgr >/dev/null && [ "$i" -lt 5 ]; do i=$((i+1)); sleep 1; done
-    pidof wlanmgr >/dev/null && { say "wlanmgr did not stop"; exit 1; }
+    stop_wlanmgr || exit 1
     stop_oem_wps_socket_holders || exit 1
     mod_loaded rtl8192es && rmmod rtl8192es
     mod_loaded rtl8192es && { say "OEM driver still loaded"; exit 1; }

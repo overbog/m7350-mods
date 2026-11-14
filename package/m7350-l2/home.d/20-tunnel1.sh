@@ -76,6 +76,52 @@ ike_failure() {
     start_error IKE "$reason"
 }
 
+wait_lte_ipv4() {
+    local attempt=0 address
+    while :; do
+        address=$(lte_src)
+        if vpn_ipv4 "$address" && [ "$address" != 0.0.0.0 ]; then
+            [ "$attempt" = 0 ] ||
+                logger -p daemon.info -t m7350-vpn -- "LTE source IPv4 ready after waiting ${attempt}s" 2>/dev/null || :
+            printf '%s\n' "$address"
+            return 0
+        fi
+        [ "${M7350_L2_BOOT_START:-0}" = 1 ] && [ "$attempt" -lt 60 ] || return 1
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+}
+
+l2tp_request() {
+    timeout -t 4 sh -c 'printf "%s m7350\n" "$2" > "$1"' sh "$VPN/l2tp-control" "$1"
+}
+
+ppp_auth_rejected() {
+    grep -Eiq '(CHAP|PAP).*fail|authentication (failed|failure|rejected)|auth.*denied' "$VPN/pppd.log" 2>/dev/null
+}
+
+wait_ppp_ipv4() {
+    local attempt=0
+    while ! ppp_up; do
+        ppp_auth_rejected && return 1
+        [ "$attempt" -lt 20 ] || return 1
+        attempt=$((attempt + 1))
+        sleep 1
+    done
+}
+
+retry_boot_ppp() {
+    # A server with a one-session policy can report the stale session as
+    # a generic PAP/CHAP rejection. Allow time for it to expire once.
+    l2tp_request d || return 1
+    logger -p daemon.notice -t m7350-vpn -- 'PPP authentication rejected at boot; retrying once in 20s' 2>/dev/null || :
+    sleep 20
+    ! ip link show dev ppp0 >/dev/null 2>&1 && esp_ready || return 1
+    mv "$VPN/pppd.log" "$VPN/pppd-first.log" || return 1
+    l2tp_request c || return 1
+    wait_ppp_ipv4
+}
+
 stage_runtime() {
     src=$1
     umask 077
@@ -188,8 +234,12 @@ start)
     [ -n "$VPN_SERVER" ] || start_error Setup "VPN server is not configured"
     [ ! -e "$VPN" ] || start_error Setup "another session owns the VPN runtime"
     ip link show dev ppp0 >/dev/null 2>&1 && start_error PPP "ppp0 already exists"
-    src=$(lte_src)
-    case "$src" in ''|*[!0-9.]*) start_error LTE "no source IPv4 address";; esac
+    if ! src=$(wait_lte_ipv4); then
+        if [ "${M7350_L2_BOOT_START:-0}" = 1 ]; then
+            start_error LTE "no source IPv4 address after waiting 60s"
+        fi
+        start_error LTE "no source IPv4 address"
+    fi
     mkdir -p "$RUN" && touch "$owned" || start_error Setup "could not reserve the VPN runtime"
     stage_runtime "$src" || start_error Setup "could not prepare the VPN configuration and PPP hooks"
     # Pin the outer endpoint to LTE so PPP never captures its own transport.
@@ -214,13 +264,18 @@ start)
     "$VPN/xl2tpd" -D -c "$VPN/xl2tpd.conf" -C "$VPN/l2tp-control" -p "$VPN/xl2tpd.pid" > "$VPN/xl2tpd.log" 2>&1 &
     i=0; while [ ! -p "$VPN/l2tp-control" ] && [ "$i" -lt 10 ]; do i=$((i+1)); sleep 1; done
     [ -p "$VPN/l2tp-control" ] || start_error L2TP "xl2tpd did not open its control FIFO"
-    timeout -t 4 sh -c 'printf "c m7350\n" > "$1"' sh "$VPN/l2tp-control" || start_error L2TP "could not send the connect request"
-    i=0; while ! ppp_up && [ "$i" -lt 20 ]; do i=$((i+1)); sleep 1; done
-    if ! ppp_up; then
-        if grep -Eiq '(CHAP|PAP).*fail|authentication (failed|failure|rejected)|auth.*denied' "$VPN/pppd.log" 2>/dev/null; then
+    l2tp_request c || start_error L2TP "could not send the connect request"
+    if ! wait_ppp_ipv4; then
+        if [ "${M7350_L2_BOOT_START:-0}" = 1 ] && ppp_auth_rejected; then
+            if ! retry_boot_ppp; then
+                ppp_auth_rejected && start_error PPP "VPN server rejected PAP/CHAP authentication after boot retry"
+                start_error PPP "ppp0 did not get a usable IPv4 address after boot retry"
+            fi
+        elif ppp_auth_rejected; then
             start_error PPP "VPN server rejected PAP/CHAP authentication"
+        else
+            start_error PPP "ppp0 did not get a usable IPv4 address"
         fi
-        start_error PPP "ppp0 did not get a usable IPv4 address"
     fi
     if [ "$VPN_L2" = 1 ] && ! ppp_vxlan_endpoints >/dev/null; then
         start_error L2 "PPP peer must differ from the public L2TP server"
