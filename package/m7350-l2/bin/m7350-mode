@@ -166,7 +166,9 @@ cmd_boot() {
     fi
     put "$STATE/boot_pending" "$desired"
     lock || return 1
-    (export M7350_L2_BOOT_START=1; switch_to "$desired"); rc=$?
+    export M7350_L2_BOOT_START=1
+    switch_to "$desired"; rc=$?
+    unset M7350_L2_BOOT_START
     unlock
     sleep "$STABLE_SECS"
     rm -f "$STATE/boot_pending"
