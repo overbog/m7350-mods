@@ -101,3 +101,7 @@ The final reboot on `15b514b` was requested at **17:31:37 UTC**, with the gadget
 The host suite ran 53 tests, with 52 passes and the optional browser test skipped. It exercised an IPv4 route appearing during the wait, successful recovery from a boot-only PPP refusal, a repeated refusal, and immediate failure on a manual refusal. There was no live LTE wait or Quick Mode DH rejection in this series. The observed Wi-Fi shutdown delay accounts for one instance that would have exceeded the previous deadline. The SIGKILL fallback was not needed on the device.
 
 After the final reboot test, removed the package, web overlay and boot hook. After another reboot, confirmed the original OEM web fingerprint and authenticated login over Wi-Fi, OEM Wi-Fi and RNDIS on `bridge0`, and no PPP or VXLAN devices. Removed temporary SSH recovery, its boot hook and its firewall rules. TCP ports 22, 23 and 2222 did not accept connections. The USB host still could not enumerate the router at the end of the run.
+
+### OEM USB cable reconnect
+
+**2026-11-14, 17:56 UTC.** After reconnecting the USB cable, the host logged an attempt to power-cycle the port at 17:56:19 UTC and `unable to enumerate USB device` at 17:56:21 UTC. Repeated checks found no TP-Link USB device and no bound RNDIS network interface. The staging VM had no USB network interface, so the OEM web interface could not be tested over USB. The OEM SSID was visible in a fresh Wi-Fi scan. No router configuration was changed. The cause of the enumeration failure remains undetermined.
