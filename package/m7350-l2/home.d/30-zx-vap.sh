@@ -85,8 +85,12 @@ stop_wlanmgr() {
     original=$(pidof wlanmgr)
     [ -n "$original" ] || return 0
     sh "$RUN/oem-init" stop || :
-    wait_wlanmgr_exit 12 && return 0
+    wait_wlanmgr_exit 5 && return 0
     wlanmgr_diagnostics
+    if wait_wlanmgr_exit 7; then
+        logger -p daemon.info -t m7350-vpn -- 'wlanmgr exited during extended SIGTERM wait' 2>/dev/null || :
+        return 0
+    fi
     for pid in $(pidof wlanmgr); do
         case " $original " in
             *" $pid "*) ;;
