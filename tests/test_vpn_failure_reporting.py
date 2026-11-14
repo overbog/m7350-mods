@@ -177,7 +177,7 @@ int main(int argc, char **argv)
             printf '%s host %s %s: %s\n' "$stamp" "$2" "$4" "$6" >> "$M7350_L2_RUN/syslog"
         ''')
         executable(mock / 'logread', r'cat "$M7350_L2_RUN/syslog"')
-        executable(mock / 'sleep', 'exec /bin/sleep 0.01')
+        executable(mock / 'sleep', 'exec /bin/sleep 0.03')
         executable(mock / 'timeout', r'''
             case "${8:-}:$5" in
                 d:*|*'d m7350'*) rm -f "$M7350_VPN_RUN/up" ;;
