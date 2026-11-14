@@ -61,3 +61,19 @@ Client commit `6c87aa4` permits one retry with a fresh IKE SA after that specifi
 **Automatic reconnection passed on this reboot.** Phase 2 succeeded on the first negotiation, so the live run did not exercise the new retry. The original intermittent fault was not reproduced, and its precise cause remains open.
 
 After the repeat test, switched to VPN Off, removed the package and its boot hook, and rebooted into stock. Verified the OEM HTTP fingerprint and login over USB, OEM bridge membership, no PPP or VXLAN, and no SSH or Telnet listeners after temporary management was removed.
+
+### Repeat reboot series
+
+The same client code was reinstalled for another coordinated series with the peer operator. The Home profile and PFS proposal were unchanged. Each counted automatic attempt started from Home with PPP and VXLAN active. No peer-side configuration was changed.
+
+| Reboot (UTC) | Result |
+| --- | --- |
+| 16:29:17 | LTE was not ready: Home started at 13.94 seconds of uptime and returned to OEM at 21.25 seconds with no LTE source IPv4. No IKE exchange took place in this boot attempt. The later IKE exchange at 16:30:12 was from a manual reactivation once LTE had an address. |
+| 16:30:46 | Invalid trial: the bench runner rebooted before the stability marker cleared. The boot safety check held OEM, so there was no IKE attempt. Corrected the runner's precondition and left the router's safety check in place. |
+| 16:32:12 | Phase 2 passed and L2TP reached the peer. The peer rejected the new PPP login because the previous session was still marked active. The device returned to OEM, so VXLAN did not return. |
+| 16:38:19 | Phase 2 and PPP returned. The peer confirmed PPP from 16:38:59 to 16:39:13. The device then rolled back because the OEM Wi-Fi manager did not stop. End-to-end L2 recovery was not established. |
+| 16:44:26 | Pass. The peer saw phase 2 and new PPP at 16:45:08. Home and VXLAN were active at 16:45:39, without manual intervention. PPP ping was 4/4, local VXLAN counters showed 172 RX and 7 TX, and a client on the L2 SSID obtained DHCP from the remote LAN. The peer independently measured +13 RX and +852 TX after its initial post-connect sample, with drops unchanged. |
+
+There were four valid automatic startup attempts and one invalid trial. No valid attempt reproduced the original Diffie–Hellman public value rejection. No retry marker or saved first-attempt KE log was found. Automatic reconnection passed once in this series; recovery **using the KE retry** remains verified only by injected host tests. The separate LTE, PPP and Wi-Fi startup failures are not covered by that retry.
+
+The package and temporary management access were removed. After another boot, the original web fingerprint and OEM login were verified over USB; no PPP or VXLAN remained and TCP 22, 23 and 2222 did not accept connections.
