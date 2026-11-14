@@ -77,3 +77,27 @@ The same client code was reinstalled for another coordinated series with the pee
 There were four valid automatic startup attempts and one invalid trial. No valid attempt reproduced the original Diffie–Hellman public value rejection. No retry marker or saved first-attempt KE log was found. Automatic reconnection passed once in this series; recovery **using the KE retry** remains verified only by injected host tests. The separate LTE, PPP and Wi-Fi startup failures are not covered by that retry.
 
 The package and temporary management access were removed. After another boot, the original web fingerprint and OEM login were verified over USB; no PPP or VXLAN remained and TCP 22, 23 and 2222 did not accept connections.
+
+### LTE readiness, stale PPP and Wi-Fi manager shutdown
+
+The boot hook now waits up to 60 seconds for a usable IPv4 source on the LTE interface before setting up IKE. Normal mode switches still report a missing IPv4 source immediately. This avoids starting IKE against a route through the wrong interface.
+
+The peer allows one PPP session per account. The previous trace showed the old session survived for 51 seconds after reboot. The peer rejected the new login 12 seconds before the old session closed. The client received a generic PAP/CHAP rejection. After an initial rejection at boot, the router closes its failed L2TP call, waits 20 seconds and dials once more with the same profile and IPsec association. A second failure still aborts startup. The peer configuration was unchanged.
+
+The OEM init script sends SIGTERM through BusyBox start-stop-daemon and returns without waiting for the daemon to finish. The service monitor normally starts it through the same init script, which is held during the driver switch. The updated shutdown waits 12 seconds, records PID, thread state and kernel wait channel at five seconds, and allows five more seconds after SIGKILL if the original OEM process is still present outside uninterruptible sleep. If the manager persists, startup aborts before the driver unload.
+
+The peer operator confirmed a new phase 2 exchange and PPP session on all three initial reboots. Local checks distinguished full Home startup from a tunnel that briefly forwarded traffic before rollback.
+
+| Reboot requested (UTC) | Local result and peer observation |
+| --- | --- |
+| 17:10:11 | Pass on `79524b1`. The peer rejected the login at 17:10:46 because the old session was still active. The old session closed at 17:10:56 and the automatic retry reconnected at 17:11:08. Home reported active at 17:11:43. PPP ping was 4/4, VXLAN recorded 173 RX and 7 TX, and a Wi-Fi client obtained DHCP from the remote LAN. |
+| 17:17:49 | Pass on `bb706a4`. The peer rejected the first login at 17:18:29, released the old session at 17:18:30 and accepted the retry at 17:18:50. The USB host lost the device and reported failed enumeration. Wi-Fi management confirmed the new boot ID and active Home. A separate L2 association obtained DHCP from the remote LAN. |
+| 17:24:24 | Wi-Fi manager shutdown passed on `bb706a4`: the same PID still existed after five seconds, with threads in R and S, and exited in the next second without SIGKILL. PPP connected on the first try at 17:25:02. The peer saw VXLAN frames, but local Home reverted to OEM at the L2 bridge check. The OEM gadget exposed `ecm0` in `bridge0` alongside `rndis0`. This violates the original exact membership check for USB L3. |
+
+Commit `15b514b` allows the OEM ECM function alongside RNDIS only when USB is assigned to L3. The topology check still requires the intended bridge2 ports. A manual switch with `ecm0` present verified `bridge0` containing `ecm0`, `rndis0` and `wlan0`, and `bridge2` containing `wlan0-va0` and `vxlan0`.
+
+The final reboot on `15b514b` was requested at **17:31:37 UTC**, with the gadget reporting USB disconnected. The peer confirmed stale PPP cleanup at 17:32:14 and the new IPsec and PPP session at 17:32:19 on the first attempt. Home became active at 56.65 seconds of device uptime. PPP ping passed 4/4. Local VXLAN counters showed 172 RX and 7 TX, and the peer measured +5 RX and +195 TX with drops unchanged. A client joined the L2 SSID and obtained DHCP from the remote LAN. SSH over the L3 SSID confirmed both bridge memberships and the new boot ID.
+
+The host suite ran 53 tests, with 52 passes and the optional browser test skipped. It exercised an IPv4 route appearing during the wait, successful recovery from a boot-only PPP refusal, a repeated refusal, and immediate failure on a manual refusal. There was no live LTE wait or Quick Mode DH rejection in this series. The observed Wi-Fi shutdown delay accounts for one instance that would have exceeded the previous deadline. The SIGKILL fallback was not needed on the device.
+
+After the final reboot test, removed the package, web overlay and boot hook. After another reboot, confirmed the original OEM web fingerprint and authenticated login over Wi-Fi, OEM Wi-Fi and RNDIS on `bridge0`, and no PPP or VXLAN devices. Removed temporary SSH recovery, its boot hook and its firewall rules. TCP ports 22, 23 and 2222 did not accept connections. The USB host still could not enumerate the router at the end of the run.
