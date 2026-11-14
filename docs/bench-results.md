@@ -47,3 +47,17 @@ Served OEM `settings.min.js` SHA-256: `3632d8302159b5913c4cbd01c3a6a626905c1fe7d
 | Removal | Pass. Switched to VPN Off, uninstalled the package and rebooted. Verified the OEM web fingerprint and login, original bridge membership, no PPP/VXLAN or package hooks, and no temporary SSH or Telnet listeners. |
 
 Only one boot with Home enabled was attempted. This candidate should not be described as automatically reconnecting after reboot.
+
+### Phase 2 recovery and repeat test
+
+The peer requires ESP PFS with MODP1024. The old SA briefly coexisted with the new IKE exchange, but the two had different SPIs and there is no evidence that the old SA caused the error. In strongSwan 5.9.14, [Quick Mode](https://github.com/strongswan/strongswan/blob/5.9.14/src/libcharon/sa/ikev1/tasks/quick_mode.c) emits the error when its DH backend rejects the received public value. The [GMP backend](https://github.com/strongswan/strongswan/blob/5.9.14/src/libstrongswan/plugins/gmp/gmp_diffie_hellman.c) checks the encoded length and the value's range. The original retained logs do not establish which check failed. Accepting malformed key material, turning off PFS, or changing the shared peer policy was not part of the fix.
+
+Client commit `6c87aa4` permits one retry with a fresh IKE SA after that specific Quick Mode error. It keeps the configured proposals and the cleartext L2TP block. The first attempt's filtered diagnostics are retained if startup fails. Host tests injected recovery on the second attempt and a repeated KE failure, checking the retry limit, the original PFS proposal, and the error presented to the user.
+
+- **2026-11-14, 16:23:42 UTC:** rebooted the M7350 while Home with L2 was active. The boot ID changed and the saved profile started without a manual switch.
+- **16:24:19 / 16:24:24 UTC:** the peer operator confirmed a new IKE/ESP SA and then a new PPP session. The router received 4/4 PPP ping replies.
+- **16:24:55 UTC:** the device reported Home active with VXLAN on `bridge2`. The peer independently measured +19 RX and +1,471 TX VXLAN frames, with no increase in drops. A client joining the L2 SSID again received DHCP from the remote LAN.
+
+**Automatic reconnection passed on this reboot.** Phase 2 succeeded on the first negotiation, so the live run did not exercise the new retry. The original intermittent fault was not reproduced, and its precise cause remains open.
+
+After the repeat test, switched to VPN Off, removed the package and its boot hook, and rebooted into stock. Verified the OEM HTTP fingerprint and login over USB, OEM bridge membership, no PPP or VXLAN, and no SSH or Telnet listeners after temporary management was removed.
