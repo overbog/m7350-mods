@@ -449,7 +449,7 @@ static int show_wifi_qr(int sock, int active)
     for (;;) {
         if (wifi_qr_read(ifaces[available[selected]], &qr) < 0)
             break;
-        draw_qr(&qr, count > 1 ? ">>" : "PWR: close");
+        draw_qr(&qr, count > 1 ? ">>" : "exit");
         key = wait_key(sock, 30, none, 0);
         if (key != KEY_NEXT || count == 1)
             break;
