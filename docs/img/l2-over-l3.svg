@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 560" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <rect x="0" y="0" width="920" height="560" fill="#ffffff"/>
+  <text x="460" y="34" text-anchor="middle" font-size="22" font-weight="700" fill="#0f172a">Layer 2 over Layer 3 — the M7350 Home tunnel</text>
+  <text x="460" y="58" text-anchor="middle" font-size="13" fill="#475569">One Ethernet LAN stretched across the internet, inside an encrypted tunnel</text>
+
+  <!-- Internet cloud (behind) -->
+  <rect x="320" y="92" width="280" height="188" rx="16" fill="#f8fafc" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="460" y="112" text-anchor="middle" font-size="12.5" font-weight="600" fill="#64748b">Internet — carries only IP (Layer 3)</text>
+
+  <!-- Left site -->
+  <rect x="30" y="92" width="250" height="188" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="155" y="114" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">Remote site (behind M7350)</text>
+  <rect x="48" y="128" width="98" height="34" rx="7" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="97" y="150" text-anchor="middle" font-size="12" fill="#334155">Laptop</text>
+  <rect x="160" y="128" width="104" height="34" rx="7" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="212" y="150" text-anchor="middle" font-size="12" fill="#334155">IP camera</text>
+  <line x1="97" y1="162" x2="97" y2="188" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="212" y1="162" x2="212" y2="188" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="60" y1="188" x2="250" y2="188" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="80" y="214" width="150" height="40" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="155" y="239" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1e3a8a">M7350 (LTE)</text>
+
+  <!-- Right site -->
+  <rect x="640" y="92" width="250" height="188" rx="12" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1.5"/>
+  <text x="765" y="114" text-anchor="middle" font-size="13" font-weight="700" fill="#0f172a">Main site (MikroTik)</text>
+  <rect x="658" y="128" width="98" height="34" rx="7" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="707" y="150" text-anchor="middle" font-size="12" fill="#334155">Server</text>
+  <rect x="770" y="128" width="104" height="34" rx="7" fill="#ffffff" stroke="#94a3b8"/>
+  <text x="822" y="150" text-anchor="middle" font-size="12" fill="#334155">DHCP</text>
+  <line x1="707" y1="162" x2="707" y2="188" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="822" y1="162" x2="822" y2="188" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="670" y1="188" x2="860" y2="188" stroke="#94a3b8" stroke-width="1.5"/>
+  <rect x="690" y="214" width="150" height="40" rx="8" fill="#dbeafe" stroke="#2563eb" stroke-width="1.5"/>
+  <text x="765" y="239" text-anchor="middle" font-size="12.5" font-weight="600" fill="#1e3a8a">MikroTik router</text>
+
+  <!-- Tunnel pipe across -->
+  <rect x="230" y="220" width="460" height="28" rx="14" fill="#e0e7ff" stroke="#6366f1" stroke-width="1.5"/>
+  <text x="460" y="238" text-anchor="middle" font-size="11.5" font-weight="600" fill="#4338ca">VXLAN inside encrypted L2TP/IPsec</text>
+  <text x="460" y="206" text-anchor="middle" font-size="12.5" font-weight="600" fill="#0f172a">one stretched Layer-2 segment</text>
+
+  <!-- Divider -->
+  <line x1="30" y1="312" x2="890" y2="312" stroke="#e2e8f0" stroke-width="1.5"/>
+  <text x="30" y="344" font-size="14" font-weight="700" fill="#0f172a">How one frame travels</text>
+
+  <!-- Encapsulation chips -->
+  <g>
+    <rect x="30" y="362" width="178" height="66" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="1.5"/>
+    <text x="119" y="390" text-anchor="middle" font-size="12.5" font-weight="700" fill="#92400e">Ethernet frame</text>
+    <text x="119" y="410" text-anchor="middle" font-size="11" fill="#b45309">your LAN traffic</text>
+
+    <rect x="248" y="362" width="188" height="66" rx="10" fill="#ede9fe" stroke="#7c3aed" stroke-width="1.5"/>
+    <text x="342" y="390" text-anchor="middle" font-size="12.5" font-weight="700" fill="#5b21b6">wrapped in VXLAN</text>
+    <text x="342" y="410" text-anchor="middle" font-size="11" fill="#6d28d9">VNI 7350, UDP 4789</text>
+
+    <rect x="476" y="362" width="198" height="66" rx="10" fill="#e0e7ff" stroke="#4f46e5" stroke-width="1.5"/>
+    <text x="575" y="390" text-anchor="middle" font-size="12.5" font-weight="700" fill="#3730a3">inside L2TP / IPsec</text>
+    <text x="575" y="410" text-anchor="middle" font-size="11" fill="#4338ca">encrypted transport</text>
+
+    <rect x="714" y="362" width="176" height="66" rx="10" fill="#f1f5f9" stroke="#64748b" stroke-width="1.5"/>
+    <text x="802" y="390" text-anchor="middle" font-size="12.5" font-weight="700" fill="#334155">over IP</text>
+    <text x="802" y="410" text-anchor="middle" font-size="11" fill="#475569">across the internet</text>
+
+    <!-- arrows -->
+    <path d="M212 395 l30 0" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+    <path d="M440 395 l30 0" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+    <path d="M678 395 l30 0" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+  </g>
+  <defs>
+    <marker id="ah" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0 0 L6 3 L0 6 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- Result caption -->
+  <rect x="30" y="452" width="860" height="72" rx="10" fill="#f0fdf4" stroke="#86efac" stroke-width="1.5"/>
+  <text x="50" y="480" font-size="13" font-weight="700" fill="#166534">Result</text>
+  <text x="50" y="502" font-size="12.5" fill="#15803d">Both sites act like one switch: same subnet and one broadcast domain — ARP, DHCP, mDNS and</text>
+  <text x="50" y="519" font-size="12.5" fill="#15803d">Wake-on-LAN all cross. That is what plain routing (Layer 3) cannot do — and why you may not need it.</text>
+</svg>
