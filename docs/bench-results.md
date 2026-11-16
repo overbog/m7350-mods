@@ -80,7 +80,7 @@ The package and temporary management access were removed. After another boot, th
 
 ### LTE readiness, stale PPP and Wi-Fi manager shutdown
 
-The boot hook now waits up to 60 seconds for a usable IPv4 source on the LTE interface before setting up IKE. Normal mode switches still report a missing IPv4 source immediately. This avoids starting IKE against a route through the wrong interface.
+This revision waited up to 60 seconds for a usable IPv4 source on the LTE interface before setting up IKE. Normal mode switches still report a missing IPv4 source immediately. This avoids starting IKE against a route through the wrong interface.
 
 The peer allows one PPP session per account. The previous trace showed the old session survived for 51 seconds after reboot. The peer rejected the new login 12 seconds before the old session closed. The client received a generic PAP/CHAP rejection. After an initial rejection at boot, the router closes its failed L2TP call, waits 20 seconds and dials once more with the same profile and IPsec association. A second failure still aborts startup. The peer configuration was unchanged.
 
@@ -135,3 +135,23 @@ On 2026-11-15, the bench used the previously built payload with the runtime chan
 USB passthrough returned on all three reboots. Automatic PPP and VXLAN recovery passed in two of three attempts. The first attempt showed that LTE can acquire IPv4 after the client startup deadline and that the router then requires manual VPN activation.
 
 After uninstalling the package and rebooting, verified the OEM bridge, OLED and web fingerprint through USB. Authenticated OEM status succeeded and the port-trigger list was empty. The package hooks, overlays, PPP and VXLAN interfaces, and temporary SSH recovery were absent. Of the eleven configuration files sampled, ten matched the saved OEM backup byte for byte. The OEM `netmanager` file differed. The peer observed PPP logout at 07:32:52 UTC and no new PPP session at 07:33:51 UTC, 30 seconds after the final OEM USB enumeration.
+
+### Extended LTE readiness wait at boot
+
+On 2026-11-16, build `2c8a2b4` increased the background boot wait from 60 to 180 one-second intervals before starting IKE. The check still requires an LTE route to the configured VPN server with a usable source IPv4. A manual switch checks once. If IPv4 never becomes available within the boot wait, the router returns to OEM with the LTE error.
+
+The host suite passed 53 tests with the optional Chromium fixture skipped. It exercised LTE becoming available after 125 intervals, the deadline with no IPv4, and the immediate failure of a manual switch with no IPv4. Both installed manifests passed before the coordinated live trials. The peer operator observed the router read-only.
+
+| Reboot requested (UTC) | Result |
+| --- | --- |
+| 09:41:30 | Normal boot. The peer accepted the new PPP session at 09:42:16 and confirmed phase 2 and two ESP SAs. Home was active at 09:42:46. PPP ping returned 3/4 replies. Local VXLAN counted 39 RX and 7 TX packets, and the peer measured +4 RX and +556 TX. The L2 Wi-Fi client received DHCP from the remote LAN. |
+| 09:48:01 | Controlled delay. The system route was visible by uptime 17.45 s. A temporary device-side fixture hid the result only from the boot check until uptime 140 s. At uptime 116.76 s, startup was still waiting, with no PPP and no failure. The VPN logged LTE readiness after 121 wait intervals. The peer confirmed phase 2 and new PPP at 09:50:45. Home was active at 09:51:18. PPP ping returned 3/4 replies. Local VXLAN counted 136 RX and 7 TX, and the peer measured +6 RX and +431 TX. The L2 Wi-Fi client received DHCP from the remote LAN. |
+| 09:56:37 | Normal boot. The VPN logged LTE readiness after 4 wait intervals. The peer accepted the new PPP session at 09:57:29 and confirmed phase 2 and two ESP SAs. Home was active at 09:58:01. PPP ping returned 3/4 replies. Local VXLAN counted 44 RX and 7 TX, and the peer measured +6 RX and +592 TX. The L2 Wi-Fi client received DHCP from the remote LAN. |
+
+The controlled test left the LTE interface and routing untouched and ran the same tunnel startup script as the normal boot. It demonstrated recovery beyond the old deadline. It did not reproduce slow LTE registration itself. The fixture was removed and both manifests were verified before the final normal reboot.
+
+PPP and VXLAN returned automatically on all three reboots, and USB management returned after 29–32 seconds on each. The peer also recorded a separate PPP interruption between the second and third reboots, from 09:53:24 to 09:56:05 UTC. The router had Home active before the third reboot. The cause of the interruption was not established.
+
+Switched to VPN Off, uninstalled the package and rebooted into OEM. Verified the OEM web fingerprint, authenticated status and empty port-trigger list over USB. OEM Wi-Fi and USB returned to `bridge0` and the OEM OLED services were running. Package hooks, overlays, PPP, VXLAN and temporary access were removed. TCP 22, 23 and 2222 were closed. Ten of eleven sampled OEM configuration files matched the saved backup. The `netmanager` file differed, as it did after the previous series.
+
+The peer observed PPP logout at 09:58:35 UTC. At 09:59:27 UTC it confirmed no PPP session or IPsec peer/SAs for the test router and unchanged VXLAN counters since 09:59:06 UTC.
