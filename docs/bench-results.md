@@ -184,7 +184,15 @@ The router was outside the scope of this build. See the [source recipe](source-b
 | Fail-closed extraction | PASS | Each extractor rejected a missing archive and an archive with the wrong SHA-256 without writing outputs. Separate per-file checks rejected a modified OEM `libauth.so` and a mismatched pin for the MP firmware blob. |
 | Clean-VM rebuild | PASS | Verified all 238 OEM input files and both radio blobs. Built 15 ARM modules and eight programs. Both Realtek variants contained the exact bytes from the verified local firmware files. The module audit reported no unresolved imports. The full runtime checksum list matched the earlier source build. |
 | Local payload and ARM smoke | PASS | Generated the OEM-derived web overlay inside the guest. Verified all 98 package and 33 runtime manifest entries. The four VPN executables printed their expected versions under QEMU user-mode. Guest result `VM_RESULT=0`. |
-| Project test suite | PASS on host, FAIL in minimal guest | The host suite had 53 passes and one optional Chromium skip. A separate minimal-guest suite run had four timeout errors in the SSH-service fixtures, whose code is unchanged by the extraction recipe. The clean build and the extraction checks passed in the dedicated build guest. |
+| Project test suite | PASS on host, FAIL in original minimal guest | The host suite had 53 passes and one optional Chromium skip. The original minimal-guest suite run had four timeout errors in the SSH-service fixtures. The [fixture retest](#clean-vm-test-fixture-retest) resolves these timeouts. |
 | Physical device | UNTESTED | The rebuilt payload was retained locally. |
 
 Package manifest SHA-256 is `42d94db892dba6301f7f36aa7be2d527dd4083be0f471f86215a64b1f1beaa4e`. Runtime manifest SHA-256 is `c889172c9adf84fc19d7a4b09e8aa26bf6562958186ea8a2b31c11d71e1a52e6`. See the [extraction procedure](source-build.md#inputs) for the exact archive and member paths.
+
+### Clean VM test fixture retest
+
+**2026-11-16.** A fresh Debian 13.7 x86-64 QEMU/KVM guest used the same minimal init and test packages as the earlier guest, with Dash as `/bin/sh` and only loopback networking. A probe of the previous fixture showed that `m7350-ssh start` exited with status 0 while its background guard retained copies of the Python stdout and stderr pipes. Python waited for EOF and timed out. The fixture now captures output in files, owns and reaps the mock daemon, and waits for the guard log before checking restored state. The VPN failure fixture initializes its mock PPP log before opening the control FIFO and gives the background mock time to publish it. The router scripts were unchanged.
+
+All six SSH fixtures passed, including both rule-restoration cases, the guard's forced-stop case and startup rule ordering with cleanup. The full guest suite passed 53 tests in 89.605 s with one documented skip for the optional Chromium fixture, which requires the OEM web assets and Playwright. The guest had no SSH client or server, Dropbear or iptables installed and exited with `VM_RESULT=0`. See the [test prerequisites](build-and-test.md#host-tests).
+
+The six SSH fixtures also passed on Linux as an unprivileged user. The full macOS run passed all 54 tests, including the Chromium fixture with the extracted OEM web assets configured.

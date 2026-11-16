@@ -94,11 +94,12 @@ echo 'password = unregistered value'
 echo 'unlabelled first credential sample-pass'
 echo 'unlabelled second credential sample-shared'
 [ "$SCENARIO" != fifo ] || exit 1
-mkfifo "$M7350_VPN_RUN/l2tp-control"
 case "$SCENARIO" in
     ppp_auth) echo 'CHAP authentication failed' > "$M7350_VPN_RUN/pppd.log" ;;
     *) echo 'PPP link established' > "$M7350_VPN_RUN/pppd.log" ;;
 esac
+# The connect mock can write the log as soon as the FIFO appears.
+mkfifo "$M7350_VPN_RUN/l2tp-control"
 '''
 
 class FailureReportingTest(unittest.TestCase):
@@ -183,6 +184,14 @@ int main(int argc, char **argv)
         executable(mock / 'sleep', '''
             case "$SCENARIO:$1" in
                 boot_recovery:1|no_lte:1) [ -d "$M7350_VPN_RUN" ] || exit 0 ;;
+            esac
+            # Give the background FIFO writer time to run on a loaded host.
+            case "$SCENARIO:$1" in
+                fifo:*|vici:*) ;;
+                *:1)
+                    if [ -f "$M7350_VPN_RUN/xl2tpd.conf" ] && [ ! -p "$M7350_VPN_RUN/l2tp-control" ]; then
+                        exec /bin/sleep 0.2
+                    fi ;;
             esac
             exec /bin/sleep 0.03
         ''')

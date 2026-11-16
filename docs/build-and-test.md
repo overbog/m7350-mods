@@ -9,7 +9,6 @@ Prepare these inputs outside the repository:
 - The output of the source build, or a retained and separately reviewed runtime, containing `bin/`, `ko/`, and a `SHA256SUMS` manifest pinned to those exact files. See `MODULES` and `TOOLS` in [the build script](../tools/build.py). Optional key-only Dropbear is a separately obtained dependency. The build does not install or set up SSH access.
 
 ```sh
-python3 -m unittest discover -s tests
 python3 tools/build.py --toolchain /path/to/compiler \
   --oem-www /path/to/oem-www --libauth /path/to/libauth.so \
   --runtime /path/to/runtime --output out/payload
@@ -17,6 +16,19 @@ python3 tools/build.py --toolchain /path/to/compiler \
 ```
 
 The output includes an overlay generated from local OEM files. Keep the package local while redistribution review is pending. The manifest checks integrity and is not a signature.
+
+## Host tests
+
+Use a Debian host or VM with Python 3.11 or later, a POSIX shell and the standard Debian userland. On a minimal Debian 13 installation, install the test prerequisites and run the suite from the repository root.
+
+```sh
+sudo apt-get install python3 dash coreutils findutils grep sed mawk tar util-linux hostname gcc libc6-dev
+python3 -m unittest discover -s tests -v
+```
+
+The SSH-service fixtures use a mounted `/proc` for the guard timestamps, a writable temporary directory that allows execution, and the fake Dropbear and iptables scripts supplied by the tests. The suite can run as an ordinary user. An SSH client, SSH daemon, Dropbear installation, host firewall access and network connection are unnecessary. To rerun the six SSH cases alone, use `python3 -m unittest discover -s tests -p test_ssh_service.py -v`.
+
+The browser fixture skips unless `M7350_OEM_WWW` points to the matching OEM web assets. To run it, install Node.js, Node Playwright and its Chromium browser with the required platform libraries. Set `NODE` for a Node executable outside `PATH` and `CHROMIUM` if using a separate Chromium installation. The browser fixture starts a local loopback server. The OLED fixture and failure-reporting suite also need the native C compiler above.
 
 ## Router bench
 

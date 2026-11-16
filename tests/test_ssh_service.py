@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0-only
 """m7350-ssh against a fake iptables (raw + filter tables) and a fake dropbear."""
+import json
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -36,7 +38,11 @@ elif op == '-D':
 elif op == '-S':
     print('-P %s DROP' % chain)
     for r in rules: print('-A %s %s' % (chain, r))
-json.dump(st, open(db, 'w'))
+if op in ('-I', '-D'):
+    pending = f'{db}.{os.getpid()}'
+    with open(pending, 'w') as output:
+        json.dump(st, output)
+    os.replace(pending, db)
 '''
 
 FAKE_DROPBEAR = r'''#!/bin/sh
@@ -47,7 +53,7 @@ case "$prog" in
     while [ $# -gt 0 ]; do [ "$1" = -f ] && echo key > "$2"; shift; done ;;
   dropbear)
     while [ $# -gt 0 ]; do [ "$1" = -P ] && pid=$2; shift; done
-    sleep 300 </dev/null >/dev/null 2>&1 & echo $! > "$pid"; echo "dropbear started" >> "$FAKE_FW.dropbear" ;;
+    echo "$FAKE_DROPBEAR_PID" > "$pid"; echo "dropbear started" >> "$FAKE_FW.dropbear" ;;
 esac
 '''
 
@@ -68,21 +74,44 @@ class SshServiceTest(unittest.TestCase):
         fakebin = self.tmp / 'fakebin'; fakebin.mkdir()
         ipt = fakebin / 'iptables'; ipt.write_text(FAKE_IPTABLES); ipt.chmod(0o755)
         self.fw = self.tmp / 'fw.json'
+        # Own the mock daemon so its exit can be reaped even without a system init.
+        self.daemon = subprocess.Popen(['sleep', '300'], stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.env = dict(os.environ, PATH='%s:%s' % (fakebin, os.environ['PATH']),
-                        FAKE_FW=str(self.fw), M7350_L2_BASE=str(base),
+                        FAKE_FW=str(self.fw), FAKE_DROPBEAR_PID=str(self.daemon.pid),
+                        M7350_L2_BASE=str(base),
                         M7350_L2_RUN=str(self.tmp / 'run'), M7350_SSH_GUARD_SECS='1')
         self.ssh = str(base / 'bin' / 'm7350-ssh')
 
     def tearDown(self):
-        subprocess.run([self.ssh, 'stop'], env=self.env, capture_output=True)
-        shutil.rmtree(self.tmp, ignore_errors=True)
+        try:
+            self.run_ssh('stop')
+        finally:
+            self.daemon.kill()
+            self.daemon.wait()
+            shutil.rmtree(self.tmp)
 
     def run_ssh(self, cmd):
-        return subprocess.run([self.ssh, cmd], env=self.env, capture_output=True, text=True, timeout=30)
+        # Dash's background guard can retain copies of the original descriptors.
+        # File capture lets us read the command's output without waiting for pipe EOF.
+        args = [self.ssh, cmd]
+        with tempfile.TemporaryFile(mode='w+') as stdout, tempfile.TemporaryFile(mode='w+') as stderr:
+            try:
+                result = subprocess.run(args, env=self.env, stdout=stdout, stderr=stderr, timeout=30)
+            except subprocess.TimeoutExpired:
+                stderr.seek(0)
+                self.fail(f'm7350-ssh {cmd} did not exit in 30 s: {stderr.read()}')
+            stdout.seek(0)
+            stderr.seek(0)
+            return subprocess.CompletedProcess(args, result.returncode, stdout.read(), stderr.read())
 
     def state(self):
-        import json
         return json.loads(self.fw.read_text())
+
+    def write_state(self, state):
+        pending = self.fw.with_suffix('.pending')
+        pending.write_text(json.dumps(state))
+        pending.replace(self.fw)
 
     def wait(self, pred, secs=8):
         end = time.monotonic() + secs
@@ -99,25 +128,26 @@ class SshServiceTest(unittest.TestCase):
         self.assertEqual(st['filter:INPUT'][:2], [LTE, ALLOW])
         self.assertIn('guard: running', self.run_ssh('status').stdout)
         self.run_ssh('stop')
+        self.assertEqual(self.daemon.wait(timeout=8), -signal.SIGTERM)
         st = self.state()
         self.assertEqual(st['raw:PREROUTING'], [])
         self.assertEqual(st['filter:INPUT'], [])
 
     def test_guard_restores_filter_after_oem_rebuild(self):
         self.run_ssh('start')
-        import json
         st = self.state()
         st['filter:INPUT'] = ['-s 192.168.0.0/24 -i bridge0 ! -p icmp -j ACCEPT']  # OEM rebuild
-        self.fw.write_text(json.dumps(st))
-        self.assertTrue(self.wait(lambda: self.state()['filter:INPUT'][:2] == [LTE, ALLOW]))
-        self.assertEqual(self.state()['raw:PREROUTING'], [LTE])
-        self.assertIn('filter rules re-inserted', (self.tmp / 'run' / 'ssh.log').read_text())
+        self.write_state(st)
+        log = self.tmp / 'run' / 'ssh.log'
+        self.assertTrue(self.wait(lambda: log.exists() and 'filter rules re-inserted' in log.read_text()))
+        st = self.state()
+        self.assertEqual(st['filter:INPUT'][:2], [LTE, ALLOW])
+        self.assertEqual(st['raw:PREROUTING'], [LTE])
 
     def test_guard_restores_raw_rule_too(self):
         self.run_ssh('start')
-        import json
         st = self.state(); st['raw:PREROUTING'] = []
-        self.fw.write_text(json.dumps(st))
+        self.write_state(st)
         self.assertTrue(self.wait(lambda: self.state()['raw:PREROUTING'] == [LTE]))
 
     def test_fails_closed_without_raw_rule(self):
@@ -129,11 +159,11 @@ class SshServiceTest(unittest.TestCase):
 
     def test_guard_stops_dropbear_when_rules_cannot_return(self):
         self.run_ssh('start')
-        import json
         st = self.state(); st['raw:PREROUTING'] = []
-        self.fw.write_text(json.dumps(st))
+        self.write_state(st)
         Path(str(self.fw) + '.fail').write_text('PREROUTING')
-        self.assertTrue(self.wait(lambda: 'dropbear: stopped' in self.run_ssh('status').stdout))
+        self.assertEqual(self.daemon.wait(timeout=8), -signal.SIGTERM)
+        self.assertIn('dropbear: stopped', self.run_ssh('status').stdout)
         self.assertIn('rule insert failed', (self.tmp / 'run' / 'ssh.log').read_text())
 
     def test_no_keys_no_start(self):
