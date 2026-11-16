@@ -17,7 +17,7 @@ Clean VM manifest hashes:
 - `PACKAGE.sha256`: `724bd490cb5fce95bb008f0059088f3251a4360e6523270c8dec8332bbf7867e`
 - `lib/MANIFEST.sha256`: `fef56bae5ed678b89c5e19d26353400210adfb31b5e8940156c0b02350f76a5d`
 
-Fresh installation and reboot were outside the update run above; see the separate test below. A real VPN peer was outside the update run; see the later Home test. The package build still needs a from-source path for the legacy dependencies before distribution. An isolated update and OEM return do not establish those results.
+Fresh installation and reboot were outside the update run above; see the separate test below. A real VPN peer was outside the update run; see the later Home test. The runtime in that test used prebuilt inputs. See the later [source-build verification](#arm-runtime-rebuilt-from-source) for the replacement procedure. An isolated update and OEM return do not establish those results.
 
 
 ## Clean install, reboot and removal
@@ -155,3 +155,21 @@ PPP and VXLAN returned automatically on all three reboots, and USB management re
 Switched to VPN Off, uninstalled the package and rebooted into OEM. Verified the OEM web fingerprint, authenticated status and empty port-trigger list over USB. OEM Wi-Fi and USB returned to `bridge0` and the OEM OLED services were running. Package hooks, overlays, PPP, VXLAN and temporary access were removed. TCP 22, 23 and 2222 were closed. Ten of eleven sampled OEM configuration files matched the saved backup. The `netmanager` file differed, as it did after the previous series.
 
 The peer observed PPP logout at 09:58:35 UTC. At 09:59:27 UTC it confirmed no PPP session or IPsec peer/SAs for the test router and unchanged VXLAN counters since 09:59:06 UTC.
+
+### ARM runtime rebuilt from source
+
+**2026-11-16, source recipe `1a1320a`.** Built in a fresh Debian 13.7 x86-64 QEMU/KVM guest with four virtual CPUs. The guest had only loopback networking, an empty build directory, read-only inputs, and a clean Git checkout at the recorded commit. The OEM extractor ran inside the guest on the original 181220 ZIP. No previous runtime payload was supplied to the build. The 4.9.2 toolchain's libc sysroot contains absolute symlinks, so the recipe extracts the compiler and binutils without that unused sysroot.
+
+| Check | Result |
+| --- | --- |
+| Source verification | All pinned inputs passed SHA-256 checks. The two Realtek patches reproduced the retained source trees byte-for-byte for every original archive file before Kbuild generated its tables. |
+| Runtime build | Pass. All 15 ARM modules and eight programs were created. Modpost and the independent ELF audit found no unresolved module imports. Module vermagic and the Realtek SDIO alias matched the reference. The module build emitted 500 warnings, mainly unused variables and register macro redefinitions. |
+| ARM process smoke test | Pass. QEMU user-mode started `pppd`, `charon`, `swanctl` and `xl2tpd` far enough to print their expected version strings. The test used empty local configuration where required and did not start a tunnel or load an ARM kernel module. |
+| Package assembly | Pass. The web overlay and ARM authentication and OLED helpers built. All 98 package manifest entries and 33 runtime manifest entries verified in the guest. Guest result `VM_RESULT=0`. |
+| Local project suite | 53 passed and the optional Chromium fixture was skipped, 54 test methods total. |
+
+The checked [runtime hashes](source-build-runtime.sha256) identify this build. Package manifest SHA-256 is `7343400fa35028e4dcb5e7ad93d8a231420eb85f0867e3364aaa95b6ce5cda18`. Runtime manifest SHA-256 is `c889172c9adf84fc19d7a4b09e8aa26bf6562958186ea8a2b31c11d71e1a52e6`.
+
+The rebuilt output differs from the retained bench binaries. For `pppd`, `xl2tpd` and Dropbear, only the GNU build ID differs. All 15 modules match the old `.modinfo`. Both Realtek variants have identical `.text`, `.init.text` and `.exit.text` bytes where those sections exist. Module metadata, relocation entries or data sections can still differ. Three modules have code-section differences, `cryptomgr`, `vxlan` and `xfrm_user`. The compact module loader is 13,340 bytes, compared with 13,348 bytes in the bench. Neither binary equivalence nor physical-device validation is established for the rebuilt package.
+
+The router was outside the scope of this build. See the [source recipe](source-build.md) for reproduction and the [license inventory](licensing.md) for the OEM and embedded radio firmware limits.

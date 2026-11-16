@@ -16,4 +16,11 @@ The source build uses the pinned inputs in [the archive catalog](archives.md) an
 | OEM inputs and web overlay | The matching stock archive supplies the OEM web assets, proprietary `libauth.so` link input, existing tunnel-module metadata and the original kernel image used for symbol/config extraction. The build requires locally obtained inputs. The generated overlay contains modified OEM assets and is retained locally. |
 | Project helpers and QR code | Existing module helpers carry GPL-2.0 source notices. Nayuki's QR code generator retains its MIT notice in the checked-in source. An overall license for the remaining original project source and integration scripts is pending. |
 
+Both Realtek builds incorporate the two byte arrays below. They were found verbatim in both rebuilt modules. Their provenance ends at the pinned ZX archive.
+
+| File under `WlanHAL/Data/8192E/` | Bytes | SHA-256 |
+| --- | ---: | --- |
+| `rtl8192Efw.bin` | 24052 | `6c2add036e87196d01f43fb2bd8cfa4b80664a7c4ede7fbc7b31405df072ab39` |
+| `rtl8192EfwMP.bin` | 24632 | `1fcaf39cb56df935611a2c6e388e1c9cc791d0d2b9cf5eb74811936464e214ed` |
+
 Before redistributing a package, account for the exact corresponding sources and local build scripts, any statically linked dependencies, required notices and licenses, the Realtek embedded firmware, and the OEM-derived overlay. The repository carries recipes and source diffs. Upstream archives, radio and OEM firmware, original OEM web assets and generated binary packages stay outside Git.
