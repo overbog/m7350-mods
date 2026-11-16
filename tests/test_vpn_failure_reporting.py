@@ -22,11 +22,13 @@ PKG = Path(__file__).resolve().parents[1] / 'package' / 'm7350-l2'
 IP = r'''
 case "$*" in
     'route get '*)
-        if [ "$SCENARIO" = boot_recovery ] && [ ! -e "$M7350_L2_RUN/lte-queried" ]; then
-            touch "$M7350_L2_RUN/lte-queried"
-            exit 0
-        fi
-        [ "$SCENARIO" = no_lte ] || echo 'dev rmnet_data0 src 192.0.2.2' ;;
+        case "$SCENARIO" in
+            boot_recovery|no_lte)
+                polls=$(cat "$M7350_L2_RUN/lte-polls" 2>/dev/null || echo 0)
+                printf '%s\n' "$((polls + 1))" > "$M7350_L2_RUN/lte-polls"
+                [ "$SCENARIO" = boot_recovery ] && [ "$polls" -ge 125 ] || exit 0 ;;
+        esac
+        echo 'dev rmnet_data0 src 192.0.2.2' ;;
     '-4 route show exact '*)
         [ "$SCENARIO" = pin ] || echo '198.51.100.1 dev rmnet_data0' ;;
     'route add '*) exit 1 ;;
@@ -177,7 +179,12 @@ int main(int argc, char **argv)
             printf '%s host %s %s: %s\n' "$stamp" "$2" "$4" "$6" >> "$M7350_L2_RUN/syslog"
         ''')
         executable(mock / 'logread', r'cat "$M7350_L2_RUN/syslog"')
-        executable(mock / 'sleep', 'exec /bin/sleep 0.03')
+        executable(mock / 'sleep', '''
+            case "$SCENARIO:$1" in
+                boot_recovery:1|no_lte:1) exit 0 ;;
+            esac
+            exec /bin/sleep 0.03
+        ''')
         executable(mock / 'timeout', r'''
             case "${8:-}:$5" in
                 d:*|*'d m7350'*) rm -f "$M7350_VPN_RUN/up" ;;
@@ -354,13 +361,31 @@ int main(int argc, char **argv)
                 self.assertEqual((run / 'ppp-attempts').read_text().splitlines(),
                                  ['connect'] * attempts)
                 if success:
-                    self.assertIn('LTE source IPv4 ready after waiting 1s', (run / 'syslog').read_text())
+                    self.assertIn('LTE source IPv4 ready after waiting 125s', (run / 'syslog').read_text())
                     self.assertEqual((run / 'active').read_text().strip(), 'vpn')
                 else:
                     failure = self.post(base, env, 'last_failure')
                     self.assertIn('rejected PAP/CHAP authentication', failure['reason'])
                     self.assertEqual('after boot retry' in failure['reason'], verb == 'boot')
                     self.assertEqual('pppd-first.log' in failure['logs'], verb == 'boot')
+
+    def test_missing_lte_ipv4_has_a_boot_deadline_and_manual_switch_checks_once(self):
+        for verb, polls, reason in (
+            ('boot', 181, 'LTE: no source IPv4 address after waiting 180s'),
+            ('set', 1, 'LTE: no source IPv4 address'),
+        ):
+            with self.subTest(verb=verb), tempfile.TemporaryDirectory() as directory:
+                base, run, vpn, env = self.make_fixture(directory, 'no_lte')
+                (base / 'state/mode').write_text('vpn\n')
+                args = [verb] if verb == 'boot' else ['set', 'vpn']
+                result = subprocess.run([base / 'bin/m7350-mode', *args], env=env,
+                                        capture_output=True, timeout=10)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(int((run / 'lte-polls').read_text()), polls)
+                self.assertFalse(vpn.exists())
+                status = self.post(base, env, 'status')
+                self.assertEqual(status['active'], 'factory')
+                self.assertEqual(status['last_error'], reason + '; reverted to factory')
 
     def test_failure_paths(self):
         cases = {

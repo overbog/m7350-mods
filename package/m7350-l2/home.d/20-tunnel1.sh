@@ -7,6 +7,9 @@ vici="unix://$VPN/charon.vici"
 pinned=$RUN/tunnel1-pinned-route
 guard=$RUN/tunnel1-esp-guard
 owned=$RUN/tunnel1-owned
+# Boot can acquire an LTE source after two minutes. Allow extra time for
+# registration while keeping the background startup attempt bounded.
+lte_boot_wait=180
 
 start_error() {
     record_start_error "$1: $2" || :
@@ -86,7 +89,7 @@ wait_lte_ipv4() {
             printf '%s\n' "$address"
             return 0
         fi
-        [ "${M7350_L2_BOOT_START:-0}" = 1 ] && [ "$attempt" -lt 60 ] || return 1
+        [ "${M7350_L2_BOOT_START:-0}" = 1 ] && [ "$attempt" -lt "$lte_boot_wait" ] || return 1
         attempt=$((attempt + 1))
         sleep 1
     done
@@ -236,7 +239,7 @@ start)
     ip link show dev ppp0 >/dev/null 2>&1 && start_error PPP "ppp0 already exists"
     if ! src=$(wait_lte_ipv4); then
         if [ "${M7350_L2_BOOT_START:-0}" = 1 ]; then
-            start_error LTE "no source IPv4 address after waiting 60s"
+            start_error LTE "no source IPv4 address after waiting ${lte_boot_wait}s"
         fi
         start_error LTE "no source IPv4 address"
     fi
