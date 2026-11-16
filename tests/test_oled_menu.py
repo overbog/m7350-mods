@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 """Host build of the OLED menu driven by fake key events and a fake framebuffer."""
 import shutil
 import subprocess

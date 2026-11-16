@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 """Offline tests for package/m7350-l2/www/cgi-bin/m7350l2 with a stub auth helper."""
 import json
 import os

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 """Host test of tools/vpn-failure-test.sh against a fake m7350-mode."""
 import os
 import subprocess

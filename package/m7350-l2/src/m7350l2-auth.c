@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Session check for the m7350l2 CGI. Uses the OEM libauth exactly like
  * web_cgi: verifyIpOrToken(REMOTE_ADDR, token) == 0 means authorised.
  * The token is read from stdin (not argv) so it never shows in ps.

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 set -u
 here=$(dirname "$0")
 BASE=${M7350_L2_BASE:-/data/m7350-l2}

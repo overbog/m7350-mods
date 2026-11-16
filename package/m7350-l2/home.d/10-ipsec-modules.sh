@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Research IPsec modules (audited external build) for tunnel 1.
 set -u
 . "$(dirname "$0")/../lib/home-common.sh"

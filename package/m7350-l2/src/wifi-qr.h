@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 #ifndef M7350_WIFI_QR_H
 #define M7350_WIFI_QR_H
 #include "qrcodegen/qrcodegen.h"

@@ -31,4 +31,14 @@ The userspace source archives below were checked against retained copies. Use `x
 | [pppd 2.4.9](https://codeload.github.com/ppp-project/ppp/tar.gz/refs/tags/ppp-2.4.9) | 719904 | `675bff4f366174649f4a3c92fd32ac476e694164ff2b0b7710019b6ead9c561e` |
 | [musl 1.2.5](https://musl.libc.org/releases/musl-1.2.5.tar.gz) | 1080786 | `a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4` |
 
+## EGLIBC corresponding source
+
+The Linaro GCC 4.9.4-2017.01 soft-float `arm-linux-gnueabi` toolchain above identifies EGLIBC 2.19 on branch `linaro_eglibc-2_19` and its ABE build environment. These pins support the [binary release policy](licensing.md#eglibc-source-for-binary-releases).
+
+| Input | Origin | SHA-256 |
+| --- | --- | --- |
+| `eglibc-ab302c9d26707876d053f17d39d8aa6ef951e3e0.tar.gz` | [Sharp's corresponding-source download](https://jp.sharp/support/bd/source/download/file/eglibc-ab302c9d26707876d053f17d39d8aa6ef951e3e0.tar.gz), archived from the manifest's Linaro EGLIBC revision. The tar records that full Git revision. | `6d75bfc3001ec10434453d9943d679dffe9efea62867c1e29df90ead24f1769a` |
+| Linaro ABE at `ac106abb85424def5e6cb382d0375d2d1fdd1f6b` | [Pinned source archive of the Linaro ABE mirror](https://codeload.github.com/Mi-AIoT/linaro-abe/tar.gz/ac106abb85424def5e6cb382d0375d2d1fdd1f6b). Contains `abe.sh`, `README` and `config/gcc4_9/eglibc.conf`. The tar records that full Git revision. | `bb7bb0a78986fcb5ff8b9c2895254472612b5ecc98a34f5752abce80b571ca5f` |
+| `gcc-linaro-4.9.4-2017.01-linux-manifest.txt` | Extract from the top-level directory inside the pinned `linaro-mirror.tar.xz` in the toolchain table. This is the release recipe for the `arm-linux-gnueabi` target. It records the component revisions, including the EGLIBC source and ABE revision above. | `b25f8f776f6c1dd28d2080d7149c3e1d20c788bd7a29ffca7b08361d29baa3ad` |
+
 Firmware, OEM HTML, upstream source archives and generated binaries stay outside Git. Public mirrors will be considered after checking redistribution rights for each artifact. A hash does not confer redistribution rights.

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Explicit RAM-only experiment. Failure leaves guards in place, never opens LTE.
 set -eu
 base=/run/m7350-vpn

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # SSID 1 / bridge0 clients routed through tunnel 1, with DNS proxy and
 # fail-closed guards. Uses the research apply/rollback scripts unchanged.
 set -u

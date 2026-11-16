@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Direct LTE for bridge3. Keep the VPN bridge's routes and DNS separate.
 set -u
 . "$(dirname "$0")/../lib/home-common.sh"

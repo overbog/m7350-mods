@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # provider mode: runs the ordered steps in provider.d/.
 set -u
 here=$(dirname "$0")

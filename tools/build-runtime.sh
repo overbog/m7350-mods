@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Rebuild the ARM runtime offline in a clean Debian x86-64 build environment.
 set -eu
 if [ "$#" != 2 ]; then

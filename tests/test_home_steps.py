@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 """Offline contract tests for package/m7350-l2/home.d steps.
 
 These do not exercise device behaviour (ip, iptables, iwpriv, insmod); they

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* OLED menu for the M7350 mode switcher.
  *
  * Idle: subscribed to key_detect; does nothing until MENU (key_detect "wps")

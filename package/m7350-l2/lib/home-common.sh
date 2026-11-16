@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 # Sourced by the home.d steps. POSIX sh for busybox ash.
 # Persistent files live in $BASE (UBIFS /data); runtime state in RAM.
 # The research binaries were built with /run/m7350-vpn compiled in, so the

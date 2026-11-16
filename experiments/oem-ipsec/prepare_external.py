@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Prepare ONLY an offline experimental Kbuild tree. Never invokes a compiler/device."""
 import argparse,hashlib,json,shutil
 from pathlib import Path

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Build dropbear for the M7350 (ARM, dynamic against the
 # device glibc: a static glibc cannot resolve root through NSS).
 # Source: Debian trixie dropbear 2025.89 (apt-get source verifies it against

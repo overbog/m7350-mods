@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 # Trusted package defaults and data-only VPN profile reader.
 vpn_value() {
     [ -f "$1" ] && awk -v key="$2" 'index($0,key "=")==1 { print substr($0,length(key)+2); exit }' "$1"

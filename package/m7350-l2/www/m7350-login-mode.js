@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 (function () {
     var deadline = 0;
     try {

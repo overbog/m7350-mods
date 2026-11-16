@@ -1,6 +1,8 @@
 # Build input provenance and license inventory
 
-The source build uses the pinned inputs in [the archive catalog](archives.md) and [the checksum manifest](../tools/runtime-inputs.sha256). This inventory records the licenses and notices found in those inputs. A root-level license for original project code remains an author decision. Preserve the source notices.
+The project's original code is licensed under GNU GPL version 2 only (`GPL-2.0-only`). The top-level [LICENSE](../LICENSE) contains the full June 1991 license text. SPDX headers identify the project's scripts, helpers, build tools, web module and tests. Upstream and vendored components retain their own licenses and notices as inventoried below.
+
+The source build uses the pinned inputs in [the archive catalog](archives.md) and [the checksum manifest](../tools/runtime-inputs.sha256).
 
 | Component | Evidence and license |
 | --- | --- |
@@ -12,9 +14,18 @@ The source build uses the pinned inputs in [the archive catalog](archives.md) an
 | pppd 2.4.9 | The upstream README identifies BSD-style source notices for pppd and separately licensed plugins. The core contains Carnegie Mellon and Paul Mackerras notices. The build omits plugins. Preserve the exact source-file notices and acknowledgments. [Versioned source README](https://github.com/ppp-project/ppp/blob/ppp-2.4.9/README) |
 | xl2tpd 1.3.18 | Upstream `LICENSE` contains GPL version 2. Daemon sources refer to the bundled GPL. [Versioned source license](https://github.com/xelerance/xl2tpd/blob/v1.3.18/LICENSE) |
 | Dropbear 2025.89 | Debian's source archive contains upstream sources and `LICENSE`, including MIT-style notices and the separate notices for bundled components. The build uses the upstream tarball and the repository's local options. [Upstream source license](https://github.com/mkj/dropbear/blob/DROPBEAR_2025.89/LICENSE) |
-| Linaro / GNU toolchains | The Linaro archives supply GCC, GNU binutils and the associated runtime components. GCC and binutils have GPL notices and the GCC runtime exception applies where specified by the corresponding runtime file. Linaro 4.9.4 includes EGLIBC 2.19, linked statically into pppd, xl2tpd and the OEM offload helper. The libc license and source obligations need to be accounted for separately from the application notices before binary redistribution. The older kernel-toolchain archive is third-party and pinned by hash. |
+| Linaro / GNU toolchains | The Linaro archives supply GCC, GNU binutils and the associated runtime components. GCC and binutils have GPL notices and the GCC runtime exception applies where specified by the corresponding runtime file. The older kernel-toolchain archive is third-party and pinned by hash. |
+| EGLIBC 2.19 | Linaro GCC 4.9.4-2017.01 supplies the static libc used by pppd, xl2tpd and the OEM offload helper. The retrieved source revision contains LGPL 2.1 in `libc/COPYING.LIB`, GPL in `libc/COPYING` and per-file notices. See the [binary release policy](#eglibc-source-for-binary-releases). |
 | OEM inputs and web overlay | The matching stock archive supplies the OEM web assets, proprietary `libauth.so` link input, existing tunnel-module metadata and the original kernel image used for symbol/config extraction. The user supplies the matching OEM ZIP. The extractor checks each OEM input, and the generated overlay, original web assets and proprietary link input stay local. |
-| Project helpers and QR code | Existing module helpers carry GPL-2.0 source notices. Nayuki's QR code generator retains its MIT notice in the checked-in source. An overall license for the remaining original project source and integration scripts is pending. |
+| Nayuki QR Code generator | Retains the MIT notice in the checked-in source. |
+
+## EGLIBC source for binary releases
+
+Every binary release that includes programs statically linked with EGLIBC must make the exact corresponding EGLIBC source and build recipe available. Ship the tarball and recipe alongside the binaries, or give recipients a release-specific link in this repository to the exact source and recipe, with version and SHA-256 pins, from which the library can be rebuilt. Include the applicable notices and the materials needed to relink the statically linked programs with a modified library. If the pinned downloads are inaccessible at release time, supply the source and recipe alongside the binaries. Generated binaries stay outside Git.
+
+The current recipe uses EGLIBC 2.19 (`2.19-2014.08-1-git` in `libc/version.h`), branch `linaro_eglibc-2_19`, revision `ab302c9d26707876d053f17d39d8aa6ef951e3e0`. The `gcc-linaro-4.9.4-2017.01-linux-manifest.txt` file inside the pinned `arm-linux-gnueabi` toolchain names that revision and the corresponding Linaro Advanced Build Environment (ABE) revision. Use the manifest and the ABE recipe with the pinned source listed in the [archive catalog](archives.md#eglibc-corresponding-source). The downloaded archive hashes and embedded Git revisions were verified. Rebuilding EGLIBC itself from these inputs has not been tested.
+
+## Locally extracted inputs
 
 This repository does not redistribute either radio firmware blob or its generated C array. The build extracts the two files locally from the pinned ZX archive and checks each file before Kbuild embeds its bytes in the locally generated modules. Provenance of the exact bytes ends at the ZX archive. See the [extraction procedure](source-build.md#inputs).
 

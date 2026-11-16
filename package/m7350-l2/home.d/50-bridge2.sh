@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Attach vxlan0 to bridge2: SSID 2 joins the remote LAN at L2.
 # Needs the remote side (VTEP on the LAN bridge) to be in place.
 set -u

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # M7350 research shell. Reverses apply in order. Safe to run after any stage,
 # including after a partial failure. RAM-only; a reboot clears everything anyway.
 set -u

@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Run on M7350 after stage C and the peer LAN-side handoff. All state is in RAM.
 set -eu
 

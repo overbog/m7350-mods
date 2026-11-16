@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Explicit operator rollback only. This returns client forwarding/DNS to OEM/LTE.
 # It does not terminate the VPN or remove unrelated routes/SA/modules.
 set -eu

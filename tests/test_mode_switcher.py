@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 """Offline tests for package/m7350-l2 (mode switcher) with mock steps."""
 import os
 import shutil

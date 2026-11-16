@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* GPL-2.0. Non-forcing cleanup of explicitly named research modules only. */
 #include <stdio.h>
 #include <string.h>

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 """m7350-ssh against a fake iptables (raw + filter tables) and a fake dropbear."""
 import os
 import shutil

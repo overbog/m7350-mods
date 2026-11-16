@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Build the web overlay: OEM /WEBSERVER/www copy plus the VPN page.
 
 usage: build-www.py <oem-www-dir> <package-dir> <out-dir>

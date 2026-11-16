@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # SSH access to the M7350: dropbear, key-only, root, never from the LTE WAN.
 # usage: m7350-ssh start|stop|status
 #

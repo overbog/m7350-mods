@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # One VPN failure scenario on the device, and what the user gets to see.
 # Runs ON the M7350 (busybox sh), as root, in factory mode, with LTE up.
 # Run only against a server you are authorized to test.

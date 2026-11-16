@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Ordered step runner shared by the home and provider modes.
 # Each step is <mode>.d/NN-name.sh implementing: start | stop | check | absent.
 #   start  bring the piece up; nonzero on failure

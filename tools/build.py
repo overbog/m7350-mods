@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Assemble a local bench package from explicit, separately supplied inputs."""
 import argparse
 import hashlib

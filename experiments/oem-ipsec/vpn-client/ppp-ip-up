@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # pppd hook args: interface tty speed local remote ipparam.
 set -eu
 test "$1" = ppp0 && test "$6" = m7350-vpn || exit 0

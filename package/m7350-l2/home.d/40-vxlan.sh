@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Tunnel 2: VXLAN over tunnel 1 (stage C). Research scripts unchanged.
 set -u
 . "$(dirname "$0")/../lib/home-common.sh"

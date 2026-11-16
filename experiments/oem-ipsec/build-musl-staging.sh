@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Alternative to glibc static binaries, which can still dlopen OEM NSS libraries.
 set -eu
 work=${IPSEC_WORK:-/srv/research/ipsec-build}

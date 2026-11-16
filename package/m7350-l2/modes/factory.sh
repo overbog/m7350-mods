@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Factory mode owns nothing. "check" means: no object of any other mode remains.
 set -u
 here=$(dirname "$0")

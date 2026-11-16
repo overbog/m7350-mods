@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Generate modpost input from the pinned stock kernel and two stock tunnel modules."""
 
 import re

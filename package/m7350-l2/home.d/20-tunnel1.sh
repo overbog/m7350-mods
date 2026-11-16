@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Tunnel 1: L2TP/IPsec to the configured VPN server (strongSwan + xl2tpd + pppd), routed.
 set -u
 . "$(dirname "$0")/../lib/home-common.sh"

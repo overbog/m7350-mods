@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Kernel removes the dead PPP route; the terminal blackhole remains.
 test "$1" = ppp0 && test "$6" = m7350-vpn || exit 0
 rm -f /run/m7350-vpn/peer-dns

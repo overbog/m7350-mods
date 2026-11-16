@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Boot hook for the M7350 mode switcher. The only file outside /data.
 # Removal: update-rc.d m7350-l2 remove; rm /etc/init.d/m7350-l2
 BASE=/data/m7350-l2

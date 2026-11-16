@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # M7350 mode switcher: factory | home | provider.
 # Single entry point for the web CGI, the OLED menu and the boot hook.
 # POSIX sh for busybox ash. Never writes outside BASE (persistent) and RUN (RAM).

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 // Generates src/font8x14.h: printable ASCII (32..126) as 1-bit 8x14 glyphs,
 // rendered from Menlo with antialiasing off. Run: swift tools/gen-font.swift > src/font8x14.h
 import CoreGraphics

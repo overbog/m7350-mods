@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Host test for m7350l2-menu: fake key_detect, fake framebuffer, stub switcher.
 
 Waits on observable state (framebuffer changes, call logs) instead of fixed

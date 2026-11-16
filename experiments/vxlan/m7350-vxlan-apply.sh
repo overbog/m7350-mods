@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Run ONLY in the M7350 research shell, AFTER an explicit operator GO and after
 # the peer stage-B diff has fixed the real addresses. RAM-only, fail-closed: any
 # error stops and never opens LTE. Does NOT load modules by force, does NOT touch

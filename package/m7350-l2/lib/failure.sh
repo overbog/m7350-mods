@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 # Sourced by the mode switcher and startup steps. BASE and RUN are set by caller.
 record_start_error() {
     (

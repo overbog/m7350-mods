@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Replace OEM Wi-Fi with ZX in RAM. Keep the three APs on separate bridges.
 set -u
 . "$(dirname "$0")/../lib/home-common.sh"

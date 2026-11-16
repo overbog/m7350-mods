@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # Keeps home mode up across PPP/IPsec drops: detach L2, resume PPP with the
 # research resume script, restage VXLAN and reattach. Never runs during a
 # mode switch: it takes the switcher's lock for each repair.

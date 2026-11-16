@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
 const path = require("node:path");

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* Appended to settings.min.js by tools/build-www.py. */
 !function(a){"use strict";
 var timer,visit=0,visible=false,pending=false,loaded=false,editing="",busy=false,creating=false,syncing=false,

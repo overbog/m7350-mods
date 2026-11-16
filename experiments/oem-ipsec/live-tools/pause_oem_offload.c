@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* GPL-2.0. Explicit, non-forcing pause of the OEM shortcut connection manager.
  * This is an authorized network-policy operation, not research-module cleanup.
  * Save the original module first; restore with insmod only during rollback.

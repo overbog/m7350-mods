@@ -1,4 +1,5 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
 # CGI for the "VPN" page. POST, application/x-www-form-urlencoded.
 # Every request needs a valid OEM session (token + REMOTE_ADDR, checked by
 # the OEM libauth through m7350l2-auth). Inputs are validated against

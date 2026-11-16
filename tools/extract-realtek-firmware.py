@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Extract the two pinned RTL8192ES firmware blobs from a local ZX archive."""
 
 import argparse

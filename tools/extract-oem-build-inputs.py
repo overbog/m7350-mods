@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-only
 """Extract only the offline build inputs from the pinned 181220 inner OEM ZIP."""
 
 import argparse

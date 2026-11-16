@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 """Inject startup failures, then check mode, CGI and OLED output.
 
 Set M7350_OEM_WWW to the extracted OEM web root to also run Chromium checks.
