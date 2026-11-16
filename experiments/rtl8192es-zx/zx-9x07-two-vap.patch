@@ -1,0 +1,29 @@
+--- a/platform.mk
++++ b/platform.mk
+@@ -16,7 +16,7 @@
+ 	CROSS_COMPILE ?=
+ 	KVER  := $(shell uname -r)
+ 	KSRC := /lib/modules/$(KVER)/build
+-	#RTL8192CD_NUM_VWLAN := 1
++	#RTL8192CD_NUM_VWLAN := 2
+ endif
+ 
+ ifeq ($(CONFIG_PLATFORM),_BRLADLIGHT_)
+@@ -102,7 +102,7 @@
+    EXTRA_CFLAGS += -DCONFIG_RTL_80211D_SUPPORT
+    EXTRA_CFLAGS += -DCONFIG_RTL_CLIENT_MODE_SUPPORT
+    EXTRA_CFLAGS += -DCONFIG_RTL_REPEATER_MODE_SUPPORT -DSDIO_2_PORT
+-   RTL8192CD_NUM_VWLAN := 1
++   RTL8192CD_NUM_VWLAN := 2
+ endif
+ 
+ # External module on the OEM 9x07 kernel. Kbuild supplies the compiler.
+@@ -112,7 +112,7 @@
+    EXTRA_CFLAGS += -DCONFIG_RTL_80211D_SUPPORT
+    EXTRA_CFLAGS += -DCONFIG_RTL_CLIENT_MODE_SUPPORT
+    EXTRA_CFLAGS += -DCONFIG_RTL_REPEATER_MODE_SUPPORT -DSDIO_2_PORT
+-   RTL8192CD_NUM_VWLAN := 1
++   RTL8192CD_NUM_VWLAN := 2
+ endif
+ 
+ ifeq ($(src), )

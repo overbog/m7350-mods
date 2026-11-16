@@ -11,11 +11,17 @@ Reference hardware: TP-Link M7350(EU) v5.2. Firmware archives below are labelled
 
 The three firmware rows refer to the inner `_User.zip` files. The GPL row refers to the decompressed tar. Check the hash at the matching layer. The direct URLs for the later firmware builds are listed on the regional support page. No Internet Archive copy has been checked for complete matching payloads. Use the vendor links first. Check a mirror against the same recorded hash before using it.
 
-The WLAN starting point is [ZX297520V3 Linux 3.4, rtl8192cd_92es at commit 80e1fec8](https://github.com/zx297520v3-mainline/linux-3.4/tree/80e1fec813691ceb16567581c3fe4d49e4bab7f3/drivers/net/wireless/rtl8192cd_92es). The vendor kernel source is in the GPL BSP above. The experimental two-VAP binary also needs our 9x07 port and exact build inputs. Complete corresponding source and patch provenance for the shipped candidate are still being assembled.
+The [source build](source-build.md) uses the following other pinned inputs. The input filenames below are the names expected by the build recipe.
 
-The bench toolchain is [Linaro GCC 4.9.4 archive on the Armbian mirror](https://mirrors.dotsrc.org/armbian-dl/_toolchain/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabi.tar.xz), SHA-256 `232302236c90ec136a42d44bc387d2e1199f5df010b77e97ee590216d2b5b181`. See the build procedure for the checked version.
+| Input | Origin | SHA-256 |
+| --- | --- | --- |
+| `M7350v5_en_gpl.tar.gz` | [TP-Link compressed GPL BSP](https://static.tp-link.com/resources/gpl/M7350v5_en_gpl.tar.gz). Use its `kernel/` subtree. | `22255db0e09b43758c887971f2e1b789c65a79b145ed6f93b60e9d2f6b8f7b35` |
+| `zx-linux-3.4.tar.gz` | [ZX297520V3 Linux 3.4 at 80e1fec8](https://codeload.github.com/zx297520v3-mainline/linux-3.4/tar.gz/80e1fec813691ceb16567581c3fe4d49e4bab7f3). Use `drivers/net/wireless/rtl8192cd_92es` and apply the checked-in exact patches. | `3791b9e28d934dc5667306331b895943874581ec02eb4f48b81c5183adda2362` |
+| `gcc492.tar.gz` | [Third-party Linaro GCC 4.9.2 prerelease, pinned repository commit](https://codeload.github.com/eckucukoglu/arm-linux-gnueabihf/tar.gz/e48c9ec0dc02714cc8dda84e8a4121db36920406). Used only for kernel modules. | `bc8f5e0653023b8f7d8f026a4acd8279f33377d50471edd045172b3b713e1435` |
+| `linaro-mirror.tar.xz` | [Linaro GCC 4.9.4 on the Armbian mirror](https://mirrors.dotsrc.org/armbian-dl/_toolchain/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabi.tar.xz). | `232302236c90ec136a42d44bc387d2e1199f5df010b77e97ee590216d2b5b181` |
+| `dropbear_2025.89.orig.tar.bz2` | [Debian source package](https://sources.debian.org/src/dropbear/2025.89-1~deb13u1/). The recipe uses the upstream tarball, with local options. | `0d1f7ca711cfc336dc8a85e672cab9cfd8223a02fe2da0a4a7aeb58c9e113634` |
 
-The following userspace source archives were also checked against retained copies. They document the inputs for rebuilding the legacy programs; the bench package uses independently supplied binaries.
+The userspace source archives below were checked against retained copies. Use `xl2tpd-v1.3.18.tar.gz` for the xl2tpd archive. The other archives use the filenames shown by their upstream links, with the pppd archive named `ppp-2.4.9.tar.gz`.
 
 | Input | Size (bytes) | SHA-256 |
 | --- | ---: | --- |
@@ -25,4 +31,4 @@ The following userspace source archives were also checked against retained copie
 | [pppd 2.4.9](https://codeload.github.com/ppp-project/ppp/tar.gz/refs/tags/ppp-2.4.9) | 719904 | `675bff4f366174649f4a3c92fd32ac476e694164ff2b0b7710019b6ead9c561e` |
 | [musl 1.2.5](https://musl.libc.org/releases/musl-1.2.5.tar.gz) | 1080786 | `a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4` |
 
-Firmware, OEM HTML, device snapshots and driver binaries are external inputs. Public mirrors will be considered after checking redistribution rights for each artifact. A hash does not confer redistribution rights.
+Firmware, OEM HTML, upstream source archives and generated binaries stay outside Git. Public mirrors will be considered after checking redistribution rights for each artifact. A hash does not confer redistribution rights.

@@ -6,6 +6,8 @@ Reuse a TP-Link M7350(EU) v5.2 as an LTE router with routed L2TP/IPsec and optio
 
 - [Development journal](docs/development.md)
 - [Source and archive catalog](docs/archives.md)
+- [ARM runtime source build](docs/source-build.md)
+- [Provenance and licenses](docs/licensing.md)
 - [Build and bench procedure](docs/build-and-test.md)
 - [Bench results](docs/bench-results.md)
 

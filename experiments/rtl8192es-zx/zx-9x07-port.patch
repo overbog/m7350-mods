@@ -1,0 +1,363 @@
+--- a/8192cd_ioctl.c
++++ b/8192cd_ioctl.c
+@@ -2475,6 +2475,15 @@
+ #if (!defined(CONFIG_RTL_COMAPI_CFGFILE) && !defined(CONFIG_RTL_COMAPI_WLTOOLS) && !defined(INCLUDE_WPS))
+ static
+ #endif
++#if defined(M7350_9X07) && defined(MBSSID)
++static bool m7350_vap_registered(struct rtl8192cd_priv *priv)
++{
++	struct rtl8192cd_priv *vap = GET_VAP_PRIV(priv, 0);
++
++	return vap && vap->dev->reg_state == NETREG_REGISTERED;
++}
++#endif
++
+ int set_mib(struct rtl8192cd_priv *priv, unsigned char *data)
+ {
+ 	struct iwpriv_arg *entry;
+@@ -2540,6 +2549,12 @@
+ 			int_val = _atoi(arg_val, 16);
+ 		else
+ 			int_val = _atoi(arg_val, 10);
++#if defined(M7350_9X07) && defined(MBSSID)
++		if (entry->offset == _OFFSET(miscEntry.vap_enable) &&
++		    !m7350_vap_registered(priv))
++			int_val = 0;
++#endif
++
+ 		
+ #ifdef AUTH_SAE
+ 		if (strcmp(entry->name, "sae_token_th") == 0) {
+@@ -8988,6 +9003,10 @@
+ 		}
+ 		if (ioctl_copy_from_user((void *)pmib, (void *)wrq->u.data.pointer, wrq->u.data.length) == 0)
+ 			ret = 0;
++#if defined(M7350_9X07) && defined(MBSSID)
++		if (!m7350_vap_registered(priv))
++			pmib->miscEntry.vap_enable = 0;
++#endif
+ 		break;
+ 
+ 	case SIOCGIWPRIV:	//-- get private ioctls for iwpriv --//
+--- a/8192cd_osdep.c
++++ b/8192cd_osdep.c
+@@ -8048,7 +8048,8 @@
+ #endif
+ 		{
+ 			for (i=0; i<RTL8192CD_NUM_VWLAN; i++) {
+-				if (netif_running(priv->pvap_priv[i]->dev))
++				if (priv->pvap_priv[i] &&
++				    netif_running(priv->pvap_priv[i]->dev))
+ 					rtl8192cd_open(priv->pvap_priv[i]->dev);
+ 			}
+ 		}
+@@ -11361,7 +11362,7 @@
+ err_out_dev:
+ 	
+ 	dev = priv->dev;
+-#ifdef _INCLUDE_PROC_FS_
++#if defined(_INCLUDE_PROC_FS_) && !defined(M7350_9X07)
+ 	rtl8192cd_proc_remove(dev);
+ #endif
+ #ifdef __KERNEL__
+@@ -11439,8 +11440,14 @@
+ #endif
+ 
+ #ifdef CONFIG_SDIO_HCI
+-	rtw_free_drv_sw(priv);
+-	sdio_dvobj_deinit(priv);
++#ifdef M7350_9X07
++	/* Only the root owns SDIO and shared driver state. */
++	if (IS_ROOT_INTERFACE(priv))
++#endif
++	{
++		rtw_free_drv_sw(priv);
++		sdio_dvobj_deinit(priv);
++	}
+ #endif
+ 
+ #ifdef CONFIG_PCI_HCI
+@@ -11890,9 +11897,22 @@
+ 
+ #ifdef MBSSID
+ 	for (i=0; i<RTL8192CD_NUM_VWLAN; i++) {
++#ifdef M7350_9X07
++		if (!priv->pvap_priv[i])
++			continue;
++#endif
+ 		rc = rtl8192cd_register_netdev(priv->pvap_priv[i]);
++#ifdef M7350_9X07
++		/* Retain the unpublished object until remove. Root is visible
++		 * and may already be walking the VAP slots.
++		 */
++		if (rc)
++			pr_warn("rtl8192cd: optional VAP %d registration failed (%d)\n",
++				i, rc);
++#else
+ 		if (rc)
+ 			return rc;
++#endif
+ 	}
+ #endif
+ 	
+@@ -11937,6 +11957,16 @@
+ 	} else {
+ 		printk("=====>> INSIDE %s <<=====\n", __func__);
+ 	}
++
++#ifdef M7350_9X07
++	/* Stop the root datapath before freeing any child VAP slots. */
++	if (priv->dev->reg_state == NETREG_REGISTERED) {
++		unregister_netdev(priv->dev);
++#ifdef _INCLUDE_PROC_FS_
++		rtl8192cd_proc_remove(priv->dev);
++#endif
++	}
++#endif
+ 
+ #ifdef WDS
+ 	num = (priv->pshare->type >> WDS_SHIFT) & WDS_MASK;
+@@ -12031,13 +12061,22 @@
+ #if defined(RTK_NL80211) && !defined(NON_NL80211_AP)
+ 			realtek_interface_del(vap_priv, priv->rtk, vap_priv->dev);
+ #else
++#ifdef M7350_9X07
++			if (vap_priv->dev->reg_state == NETREG_REGISTERED) {
++				unregister_netdev(vap_priv->dev);
++#ifdef _INCLUDE_PROC_FS_
++				rtl8192cd_proc_remove(vap_priv->dev);
++#endif
++			}
++#else
+ 			if (vap_priv->dev->reg_state != NETREG_UNINITIALIZED)
+ 				unregister_netdev(vap_priv->dev);
+ #endif
++#endif
+ #if defined(__ECOS) && defined(CONFIG_SDIO_HCI)
+ 			_rtw_mutex_free(&(priv->asoc_list_lock));
+ #endif
+-#ifdef _INCLUDE_PROC_FS_
++#if defined(_INCLUDE_PROC_FS_) && !defined(M7350_9X07)
+ 			rtl8192cd_proc_remove(vap_priv->dev);
+ #endif
+ #ifdef RTL8192CD_VARIABLE_USED_DMEM
+@@ -12098,7 +12137,9 @@
+ #endif
+ 	dev = priv->dev;
+ 
+-#ifdef RTK_NL80211
++#if defined(M7350_9X07)
++	/* Root was unregistered before child teardown. */
++#elif defined(RTK_NL80211)
+ #ifdef NON_NL80211_AP
+ 	if (dev->reg_state != NETREG_UNINITIALIZED)
+ 		unregister_netdev(dev);
+@@ -12115,7 +12156,7 @@
+ 	_rtw_mutex_free(&(priv->asoc_list_lock));
+ 	_rtw_mutex_free(&(priv->pshare->rc_packet_q_lock));
+ #endif
+-#ifdef _INCLUDE_PROC_FS_
++#if defined(_INCLUDE_PROC_FS_) && !defined(M7350_9X07)
+ 	rtl8192cd_proc_remove(dev);
+ #endif
+ 
+--- a/8192cd_rx.c
++++ b/8192cd_rx.c
+@@ -2162,6 +2162,9 @@
+ 	}
+ }
+ #else
++#ifdef M7350_9X07
++		netif_rx(pskb);
++#else
+ 		//taochao test
+ 		//packet_len_check(pskb);
+ 		clean_cache(skb_mac_header(pskb), pskb->len + pskb->data - skb_mac_header(pskb));
+@@ -2192,6 +2195,7 @@
+ #else
+ 		netif_rx(pskb);
+ #endif
++#endif /* M7350_9X07 */
+ #endif
+ 
+ #endif
+--- a/8192cd_sme.c
++++ b/8192cd_sme.c
+@@ -16316,6 +16316,8 @@
+ #ifdef MBSSID
+ 					if (GET_ROOT(priv)->pmib->miscEntry.vap_enable) {
+ 						for (i=0; i<RTL8192CD_NUM_VWLAN; i++) {
++							if (!priv->pvap_priv[i])
++								continue;
+ 							priv->pvap_priv[i]->pmib->dot11RFEntry.dot11channel = priv->pmib->dot11RFEntry.dot11channel;
+ 							priv->pvap_priv[i]->ht_cap_len = 0; // re-construct HT IE
+ 
+@@ -16343,6 +16345,8 @@
+ #ifdef MBSSID
+ 					if (GET_ROOT(priv)->pmib->miscEntry.vap_enable) {
+ 						for (i=0; i<RTL8192CD_NUM_VWLAN; i++) {
++							if (!priv->pvap_priv[i])
++								continue;
+ 							priv->pvap_priv[i]->pmib->dot11RFEntry.dot11channel = priv->pmib->dot11RFEntry.dot11channel;
+ 							priv->pvap_priv[i]->ht_cap_len = 0;	// re-construct HT IE
+ 
+@@ -28593,9 +28597,9 @@
+         return 0;    
+ 
+     /*now we default use wlan0-va1 and wlan0-va2 as STA under multiRepeater mode*/
+-	if (priv->vap_id == 1)
++	if (priv->vap_id == 1 && RTL8192CD_NUM_VWLAN > 2)
+ 		priv_other_va=priv_root->pvap_priv[2];
+-	else if (priv->vap_id == 2)
++	else if (priv->vap_id == 2 && RTL8192CD_NUM_VWLAN > 1)
+ 		priv_other_va=priv_root->pvap_priv[1];
+     
+     if(priv_other_va && priv_other_va->pmib->dot11OperationEntry.opmode & WIFI_ASOC_STATE){
+@@ -28647,9 +28651,9 @@
+         return 0;    
+ 
+ 	//now we default use wlan0-va1 and wlan0-va2 as STA under multiRepeater mode
+-    if(priv->vap_id==1){
++    if(priv->vap_id==1 && RTL8192CD_NUM_VWLAN > 2){
+         priv_other_va=priv_root->pvap_priv[2];
+-    }else if(priv->vap_id==2){
++    }else if(priv->vap_id==2 && RTL8192CD_NUM_VWLAN > 1){
+         priv_other_va=priv_root->pvap_priv[1];
+     }
+     
+--- a/EdcaTurboCheck.c
++++ b/EdcaTurboCheck.c
+@@ -127,8 +127,10 @@
+ 		int assoc_num = GET_ROOT(priv)->assoc_num;
+ #ifdef MBSSID
+ 		if (GET_ROOT(priv)->pmib->miscEntry.vap_enable){
+-			for (i=0; i<RTL8192CD_NUM_VWLAN; ++i)
+-				assoc_num += GET_ROOT(priv)->pvap_priv[i]-> assoc_num;
++			for (i=0; i<RTL8192CD_NUM_VWLAN; ++i) {
++				if (IS_DRV_OPEN(GET_ROOT(priv)->pvap_priv[i]))
++					assoc_num += GET_ROOT(priv)->pvap_priv[i]->assoc_num;
++			}
+ 		}
+ #endif	
+ #ifdef UNIVERSAL_REPEATER
+@@ -431,9 +433,9 @@
+ 				priv->pshare->iot_mode_enable = 0;
+ 				switch_turbo++;
+ #ifdef CONFIG_WLAN_HAL_8881A
+-				if (GET_CHIP_VER(priv) == VERSION_8881A) {
++				if (GET_CHIP_VER(priv) == VERSION_8881A) {
+ 					RTL_W32(0x460, 0x03086666);
+-				}
++				}
+ #endif //CONFIG_WLAN_HAL_8881A
+ 			} else if ((!priv->pshare->iot_mode_enable) &&
+ 				((priv->pshare->phw->VO_pkt_count < 50) &&
+--- a/Makefile
++++ b/Makefile
+@@ -6,17 +6,8 @@
+ 
+ MODULE_NAME := rtl8192cd
+ 
+-ifndef RTK_WIFI_8192CD_ROOT
+-	export RTK_WIFI_8192CD_ROOT=$(shell cd ../.. && pwd)
+-	export RTK_WIFI_8192CD_SRC=$(shell pwd)
+-endif
+-
+-PWD := $(RTK_WIFI_8192CD_SRC)
+-#KSRC := ~/project/test/for_web50_rtw_140805/AP/base/linux/kernels/linux-3.4.5
+-include $(PWD)/drivers/net/wireless/rtl8192cd_92es/platform.mk
+-include $(PWD)/drivers/net/wireless/rtl8192cd_92es/config.mk
+-#include $(PWD)/platform.mk
+-#include $(PWD)/config.mk
++include $(src)/platform.mk
++include $(src)/config.mk
+ 
+ ifeq ($(CONFIG_RTL_92C_SUPPORT),y)
+ RTL_WLAN_DATA_DIR := data
+@@ -266,6 +257,10 @@
+ 
+ ifeq ($(CONFIG_WLAN_HAL_8881A),y)
+ 	$(MODULE_NAME)-objs += OUTSRC/rtl8821a/PhyDM_IQK_8821A_AP.o
++endif
++
++ifeq ($(CONFIG_POWER_SAVE),y)
++$(MODULE_NAME)-objs += 8192cd_pwrctrl.o
+ endif
+ 
+ ifeq ($(CONFIG_WLAN_HAL_8192EE),y)
+@@ -375,7 +370,6 @@
+ 	8192d_hw.o\
+ 	8192cd_hw.o\
+ 	8192cd_security.o\
+-	8192cd_pwrctrl.o\
+ 	8192cd_tkip.o\
+ 	8192cd_aes.o\
+ 	8192cd_proc.o\
+--- a/platform.mk
++++ b/platform.mk
+@@ -105,6 +105,16 @@
+    RTL8192CD_NUM_VWLAN := 1
+ endif
+ 
++# External module on the OEM 9x07 kernel. Kbuild supplies the compiler.
++ifeq ($(CONFIG_PLATFORM),ARM_QUALCOMM_9x07)
++   EXTRA_CFLAGS += -DM7350_9X07
++   EXTRA_CFLAGS += -D_LITTLE_ENDIAN_ -DSMP_SYNC
++   EXTRA_CFLAGS += -DCONFIG_RTL_80211D_SUPPORT
++   EXTRA_CFLAGS += -DCONFIG_RTL_CLIENT_MODE_SUPPORT
++   EXTRA_CFLAGS += -DCONFIG_RTL_REPEATER_MODE_SUPPORT -DSDIO_2_PORT
++   RTL8192CD_NUM_VWLAN := 1
++endif
++
+ ifeq ($(src), )
+ 	src=$(PWD)
+ endif
+--- a/sdio/8192es/8192e_sdio_hw.c
++++ b/sdio/8192es/8192e_sdio_hw.c
+@@ -58,8 +58,13 @@
+ #ifdef MBSSID
+ 	for (i = 0; i < RTL8192CD_NUM_VWLAN; i++) {
+ 		ret = rtl8192cd_init_one(psdio_func, pdid, &wlan_device[0], i);
++#ifdef M7350_9X07
++		if (ret)
++			pr_warn("rtl8192cd: optional VAP %d init failed (%d)\n", i, ret);
++#else
+ 		if (ret)
+ 			goto error;
++#endif
+ 	}
+ #endif
+ 
+--- a/sdio/sdio_io.c
++++ b/sdio/sdio_io.c
+@@ -1243,6 +1243,21 @@
+ 
+ void dump_sdio_cccr(struct rtl8192cd_priv *priv)
+ {
++#ifdef M7350_9X07
++	struct sdio_func *func = priv->pshare->psdio_func;
++	u8 data[0x100];
++	int i, err = 0;
++
++	sdio_claim_host(func);
++	for (i = 0; i < sizeof(data); ++i) {
++		data[i] = sdio_f0_readb(func, i, &err);
++		if (err)
++			break;
++	}
++	sdio_release_host(func);
++
++	mem_dump("SDIO CCCR Registers:", data, i);
++#else
+ 	int i;
+ 	u8 data[0x100];
+ 	
+@@ -1256,6 +1271,7 @@
+ 	sdio_release_host(priv->pshare->psdio_func);
+ 	
+ 	mem_dump("SDIO CCCR Registers:", data, i);
++#endif
+ }
+ 
+ void dump_sdio_local_reg(struct rtl8192cd_priv *priv)

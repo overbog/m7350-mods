@@ -1,12 +1,12 @@
 # Build and bench procedure
 
-Use x86-64 Debian with Python 3.11 or later, Git, GNU coreutils, a native C compiler with libc headers for tests, and a verified Linaro 4.9.4 ARM cross compiler. This checkout builds the web patch and the ARM authentication and OLED helpers. Assembly still requires locally supplied ARM modules and VPN programs. It does not yet reproduce those components from source.
+Use x86-64 Debian with Python 3.11 or later, Git, GNU coreutils, a native C compiler with libc headers for tests, and a verified Linaro 4.9.4 ARM cross compiler. This checkout builds the web patch and the ARM authentication and OLED helpers. Use the [ARM runtime source build](source-build.md) to produce the modules and VPN programs supplied to the package assembler.
 
 Prepare these inputs outside the repository:
 
 - The OEM `/WEBSERVER/www` from the exact reference firmware and OEM `usr/lib/libauth.so`. Obtain them from firmware or a local reference device. Do not use a boot or filesystem archive as an input to the packager.
 - The unpacked compiler from the [archive catalog](archives.md).
-- A reviewed runtime directory containing `bin/`, `ko/`, and a `SHA256SUMS` manifest pinned to those exact files. See `MODULES` and `TOOLS` in [the build script](../tools/build.py). Optional key-only Dropbear is a separately obtained dependency. The build does not install or set up SSH access.
+- The output of the source build, or a retained and separately reviewed runtime, containing `bin/`, `ko/`, and a `SHA256SUMS` manifest pinned to those exact files. See `MODULES` and `TOOLS` in [the build script](../tools/build.py). Optional key-only Dropbear is a separately obtained dependency. The build does not install or set up SSH access.
 
 ```sh
 python3 -m unittest discover -s tests

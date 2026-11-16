@@ -1,0 +1,2 @@
+# The replay patches preserve the upstream mixture of LF and CRLF.
+experiments/rtl8192es-zx/*.patch -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
