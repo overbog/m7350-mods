@@ -173,3 +173,18 @@ The checked [runtime hashes](source-build-runtime.sha256) identify this build. P
 The rebuilt output differs from the retained bench binaries. For `pppd`, `xl2tpd` and Dropbear, only the GNU build ID differs. All 15 modules match the old `.modinfo`. Both Realtek variants have identical `.text`, `.init.text` and `.exit.text` bytes where those sections exist. Module metadata, relocation entries or data sections can still differ. Three modules have code-section differences, `cryptomgr`, `vxlan` and `xfrm_user`. The compact module loader is 13,340 bytes, compared with 13,348 bytes in the bench. Neither binary equivalence nor physical-device validation is established for the rebuilt package.
 
 The router was outside the scope of this build. See the [source recipe](source-build.md) for reproduction and the [license inventory](licensing.md) for the OEM and embedded radio firmware limits.
+
+### Local extraction of OEM inputs and Realtek firmware
+
+**2026-11-16, source recipe `bff7701`.** A fresh Debian 13.7 x86-64 QEMU/KVM guest cloned the recipe, with only loopback networking and an empty build directory. Its read-only input mount held the Git bundle, the separately obtained archives at the documented hashes, and the matching TP-Link 181220 inner OEM ZIP. The guest received no pre-extracted assets, radio blobs, runtime binaries or package from a prior build.
+
+| Check | Verdict | Result |
+| --- | --- | --- |
+| Proprietary inputs in Git | PASS | Checked 136 blob objects, including historical and local unreachable objects. No complete nonempty OEM input or input archive digest matched. Checks against the two radio images also found no matching 128-byte raw, C-array or Base64 segments. |
+| Fail-closed extraction | PASS | Each extractor rejected a missing archive and an archive with the wrong SHA-256 without writing outputs. Separate per-file checks rejected a modified OEM `libauth.so` and a mismatched pin for the MP firmware blob. |
+| Clean-VM rebuild | PASS | Verified all 238 OEM input files and both radio blobs. Built 15 ARM modules and eight programs. Both Realtek variants contained the exact bytes from the verified local firmware files. The module audit reported no unresolved imports. The full runtime checksum list matched the earlier source build. |
+| Local payload and ARM smoke | PASS | Generated the OEM-derived web overlay inside the guest. Verified all 98 package and 33 runtime manifest entries. The four VPN executables printed their expected versions under QEMU user-mode. Guest result `VM_RESULT=0`. |
+| Project test suite | PASS on host, FAIL in minimal guest | The host suite had 53 passes and one optional Chromium skip. A separate minimal-guest suite run had four timeout errors in the SSH-service fixtures, whose code is unchanged by the extraction recipe. The clean build and the extraction checks passed in the dedicated build guest. |
+| Physical device | UNTESTED | The rebuilt payload was retained locally. |
+
+Package manifest SHA-256 is `42d94db892dba6301f7f36aa7be2d527dd4083be0f471f86215a64b1f1beaa4e`. Runtime manifest SHA-256 is `c889172c9adf84fc19d7a4b09e8aa26bf6562958186ea8a2b31c11d71e1a52e6`. See the [extraction procedure](source-build.md#inputs) for the exact archive and member paths.
