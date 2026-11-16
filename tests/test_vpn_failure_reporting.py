@@ -315,11 +315,12 @@ int main(int argc, char **argv)
             self.assertEqual(self.post(base, env, 'status')['last_error'], reason)
             self.assertEqual(self.post(base, env, 'last_failure')['reason'], reason)
             shutil.rmtree(run)
+            env['M7350_L2_EARLY_RESET_MAX'] = '1'
             subprocess.run([mode, 'boot'], env=env, capture_output=True, timeout=10)
             status = self.post(base, env, 'status')
             self.assertEqual(status['safe_hold'], 'on')
             self.assertEqual(status['last_error'],
-                             reason + '; previous boot did not reach stable; holding factory until a manual switch')
+                             reason + '; repeated early resets (1); safe hold')
             if self.compiler:
                 subprocess.run([self.oled, status['last_error']], env=env, check=True)
 

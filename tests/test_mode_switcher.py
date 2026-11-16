@@ -41,13 +41,25 @@ class ModeSwitcherTest(unittest.TestCase):
         self.env = dict(os.environ, M7350_L2_BASE=str(self.base),
                         M7350_L2_RUN=str(self.run_dir), M7350_L2_STABLE_SECS='0',
                         WORLD=str(self.world))
+        commands = self.tmp / 'commands'
+        commands.mkdir()
+        sleep = commands / 'sleep'
+        sleep.write_text('#!/bin/sh\nkill -TERM "$PPID"\n')
+        sleep.chmod(0o755)
+        self.interrupt_env = dict(self.env, PATH=str(commands) + os.pathsep + self.env['PATH'])
 
     def tearDown(self):
         shutil.rmtree(self.tmp)
 
-    def mode(self, *args):
+    def mode(self, *args, env=None):
         return subprocess.run(['sh', str(self.base / 'bin' / 'm7350-mode'), *args],
-                              env=self.env, capture_output=True, text=True)
+                              env=self.env if env is None else env,
+                              capture_output=True, text=True, timeout=15)
+
+    def reset_ram(self):
+        shutil.rmtree(self.run_dir)
+        for obj in self.world.iterdir():
+            obj.unlink()
 
     def status(self):
         out = self.mode('status').stdout
@@ -142,19 +154,69 @@ class ModeSwitcherTest(unittest.TestCase):
         self.assertEqual(self.objects(), ['10-vpn', '20-vxlan'])
         self.assertFalse((self.base / 'state' / 'boot_pending').exists())
 
-    def test_unstable_previous_boot_holds_factory(self):
-        self.mode('set', 'home')
-        shutil.rmtree(self.run_dir)
-        for obj in self.world.iterdir():
-            obj.unlink()
-        (self.base / 'state' / 'boot_pending').write_text('home\n')
+    def test_single_early_reset_starts_home_again(self):
+        state = self.base / 'state'
+        state.mkdir()
+        (state / 'mode').write_text('home\n')
+        self.assertEqual(self.mode('boot', env=self.interrupt_env).returncode, -15)
+        self.assertEqual((state / 'boot_pending').read_text(), '0\n')
+        self.reset_ram()
+        self.assertEqual(self.mode('boot', env=self.interrupt_env).returncode, -15)
+        self.assertEqual(self.objects(), ['10-vpn', '20-vxlan'])
+        self.assertEqual(self.status()['active'], 'home')
+        self.assertEqual(self.status()['safe_hold'], 'off')
+        self.assertEqual((state / 'boot_pending').read_text(), '1\n')
+        # Re-running the hook on the same boot must not count another reset.
+        self.assertEqual(self.mode('boot').returncode, 0)
+        self.assertEqual((state / 'boot_pending').read_text(), '1\n')
+
+    def test_stable_boot_clears_legacy_pending_marker(self):
+        state = self.base / 'state'
+        state.mkdir()
+        (state / 'mode').write_text('home\n')
+        (state / 'boot_pending').write_text('home\n')
+        self.assertEqual(self.mode('boot').returncode, 0)
+        self.assertEqual(self.status()['active'], 'home')
+        self.assertFalse((state / 'boot_pending').exists())
+        self.assertIn('boot: stable mark reached', (self.run_dir / 'log').read_text())
+
+    def test_three_consecutive_early_resets_hold_factory(self):
+        state = self.base / 'state'
+        state.mkdir()
+        (state / 'mode').write_text('home\n')
+        for count in range(3):
+            self.assertEqual(self.mode('boot', env=self.interrupt_env).returncode, -15)
+            self.assertEqual((state / 'boot_pending').read_text(), f'{count}\n')
+            self.reset_ram()
         self.assertNotEqual(self.mode('boot').returncode, 0)
         self.assertEqual(self.objects(), [])
         self.assertEqual(self.status()['safe_hold'], 'on')
+        self.assertIn('repeated early resets (3); safe hold', self.status()['last_error'])
+        self.reset_ram()
         self.mode('boot')
         self.assertEqual(self.objects(), [])
         self.assertEqual(self.mode('set', 'home').returncode, 0)
         self.assertEqual(self.status()['safe_hold'], 'off')
+
+    def test_oem_boot_clears_an_early_reset_streak(self):
+        state = self.base / 'state'
+        state.mkdir()
+        (state / 'mode').write_text('factory\n')
+        (state / 'boot_pending').write_text('9\n')
+        self.assertEqual(self.mode('boot').returncode, 0)
+        self.assertEqual(self.status()['active'], 'factory')
+        self.assertEqual(self.status()['safe_hold'], 'off')
+        self.assertFalse((state / 'boot_pending').exists())
+        self.assertEqual(self.objects(), [])
+
+    def test_completed_start_failure_does_not_leave_reset_marker(self):
+        state = self.base / 'state'
+        state.mkdir()
+        (state / 'mode').write_text('home\n')
+        (self.world / 'fail-start-20-vxlan').touch()
+        self.assertNotEqual(self.mode('boot').returncode, 0)
+        self.assertEqual(self.status()['safe_hold'], 'off')
+        self.assertFalse((state / 'boot_pending').exists())
 
 
 if __name__ == '__main__':

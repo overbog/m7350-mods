@@ -8,6 +8,7 @@ set -u
 BASE=${M7350_L2_BASE:-/data/m7350-l2}
 RUN=${M7350_L2_RUN:-/run/m7350-l2}
 STABLE_SECS=${M7350_L2_STABLE_SECS:-300}
+EARLY_RESET_MAX=${M7350_L2_EARLY_RESET_MAX:-3}
 MODES="factory vpn home provider"
 STATE=$BASE/state
 . "$BASE/lib/failure.sh"
@@ -61,6 +62,42 @@ fail() {
     echo "error: $*" >&2
 }
 
+arm_boot_attempt() {
+    case "$EARLY_RESET_MAX" in
+        [1-9]|[1-9][0-9]|[1-9][0-9][0-9]) ;;
+        *) EARLY_RESET_MAX=3 ;;
+    esac
+    early_resets=0
+    if [ -e "$STATE/boot_pending" ]; then
+        previous_count=$(get "$STATE/boot_pending" '')
+        case "$previous_count" in
+            0|[1-9]|[1-9][0-9]|[1-9][0-9][0-9])
+                early_resets=$((previous_count + 1)) ;;
+            *) early_resets=1 ;;  # Older releases stored the desired mode here.
+        esac
+    fi
+    if [ "$early_resets" -ge "$EARLY_RESET_MAX" ]; then
+        hold_reason="repeated early resets ($early_resets); safe hold"
+        if ! put "$STATE/safe_hold" "$hold_reason"; then
+            fail "boot: could not save safe hold"
+            return 1
+        fi
+        previous_error=$(get "$STATE/last_error" '')
+        fail "${previous_error:+$previous_error; }$hold_reason"
+        rm -f "$STATE/boot_pending"
+        sync
+        return 1
+    fi
+    # This file is both the in-flight marker and its count of prior resets.
+    # Commit it before touching the tunnel so an interrupted start counts.
+    if ! put "$STATE/boot_pending" "$early_resets"; then
+        fail "boot: could not record the VPN start attempt"
+        return 1
+    fi
+    sync
+    boot_armed=1
+}
+
 # The single switching path used by every caller.
 switch_to() {
     target=$1
@@ -73,6 +110,9 @@ switch_to() {
             fail "$reason"
             return 1
         fi
+    fi
+    if [ "${2:-}" = boot ]; then
+        arm_boot_attempt || return 1
     fi
     current=$(get "$RUN/active" factory)
     log info "switch $current -> $target"
@@ -129,7 +169,7 @@ cmd_set() {
         echo "error: could not save OEM mode" >&2
         return 1
     fi
-    rm -f "$STATE/safe_hold"
+    rm -f "$STATE/safe_hold" "$STATE/boot_pending"
     switch_to "$1"; rc=$?
     unlock
     return $rc
@@ -146,35 +186,55 @@ cmd_status() {
 
 # Called once per boot by the init hook, in the background.
 cmd_boot() {
-    put "$RUN/active" factory
+    lock || return 1
+    # The init hook can be called again in the same kernel boot.
+    if [ -e "$RUN/boot-started" ]; then
+        unlock
+        return 0
+    fi
+    touch "$RUN/boot-started" || { unlock; return 1; }
+    if [ ! -f "$RUN/active" ]; then
+        put "$RUN/active" factory || { unlock; return 1; }
+    fi
     if [ -e "$STATE/safe_hold" ]; then
         log info "boot: safe hold set, staying factory"
+        unlock
         return 0
     fi
     desired=$(get "$STATE/mode" factory)
     valid_mode "$desired" || desired=factory
     if [ "$desired" = factory ]; then
         rm -f "$STATE/boot_pending"
+        unlock
         return 0
     fi
-    if [ -e "$STATE/boot_pending" ]; then
-        # The previous boot never reached the stable mark: crash, hang or reboot.
-        rm -f "$STATE/boot_pending"
-        put "$STATE/safe_hold" "previous boot did not reach stable"
-        previous_error=$(get "$STATE/last_error" '')
-        fail "${previous_error:+$previous_error; }previous boot did not reach stable; holding factory until a manual switch"
-        return 1
-    fi
-    put "$STATE/boot_pending" "$desired"
-    lock || return 1
+    boot_armed=0
     export M7350_L2_BOOT_START=1
-    switch_to "$desired"; rc=$?
+    switch_to "$desired" boot; rc=$?
     unset M7350_L2_BOOT_START
+    if [ "$rc" != 0 ]; then
+        # A startup failure which finished handling the error is not a reset.
+        [ "$boot_armed" = 0 ] || rm -f "$STATE/boot_pending"
+        unlock
+        return "$rc"
+    fi
     unlock
-    sleep "$STABLE_SECS"
-    rm -f "$STATE/boot_pending"
-    log info "boot: stable mark reached"
-    return $rc
+    sleep "$STABLE_SECS" || return 1
+    # The tunnel supervisor may be refreshing routes or recovering PPP when
+    # the timer expires. Give it a chance to finish before checking health.
+    while [ -f "$STATE/boot_pending" ]; do
+        if lock 2>/dev/null; then
+            if [ -f "$STATE/boot_pending" ] &&
+                [ "$(get "$RUN/active" factory)" = "$desired" ] &&
+                driver "$desired" check && rm -f "$STATE/boot_pending"; then
+                sync
+                log info "boot: stable mark reached"
+            fi
+            unlock
+        fi
+        [ -f "$STATE/boot_pending" ] || break
+        sleep 11 || return 1
+    done
 }
 
 case "${1:-}" in
