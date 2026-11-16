@@ -31,37 +31,59 @@ def kernel_image(boot):
     raise ValueError("The expected stock kernel image was not recovered")
 
 
+def read_oem_inputs(source):
+    with source.open("rb") as stream:
+        if hashlib.file_digest(stream, "sha256").hexdigest() != ZIP_SHA256:
+            raise ValueError("OEM archive SHA-256 does not match the reference inner ZIP")
+        stream.seek(0)
+        with zipfile.ZipFile(stream) as archive:
+            image = kernel_image(archive.read("boot.img"))
+            start = image.index(b"IKCFG_ST") + len(b"IKCFG_ST")
+            end = image.index(b"IKCFG_ED", start)
+            # The bench's /proc/config.gz capture had an extra trailing LF.
+            config = zlib.decompress(image[start:end], 31) + b"\n"
+            files = {
+                "kernel-decompressed.bin": image,
+                "kernel.config": config,
+                "udp_tunnel.ko": archive.read(MODULES + "ipv4/udp_tunnel.ko"),
+                "ip6_udp_tunnel.ko": archive.read(MODULES + "ipv6/ip6_udp_tunnel.ko"),
+                "oem-lib/libauth.so": archive.read("system/usr/lib/libauth.so"),
+            }
+            for item in archive.infolist():
+                if item.filename.startswith(WWW) and not item.is_dir():
+                    files["oem-www/" + item.filename.removeprefix(WWW)] = archive.read(item)
+    return files
+
+
+def verify_oem_inputs(files):
+    manifest = Path(__file__).with_name("oem-extracted.sha256").read_text()
+    expected = {name: digest for digest, name in
+                (line.split("  ", 1) for line in manifest.splitlines())}
+    if files.keys() != expected.keys():
+        raise ValueError("Extracted OEM file list differs from oem-extracted.sha256")
+    for name, data in files.items():
+        if hashlib.sha256(data).hexdigest() != expected[name]:
+            raise ValueError(f"{name}: extracted OEM file SHA-256 mismatch")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("archive", type=Path, help="Inner 181220 _User.zip")
     parser.add_argument("output", type=Path, help="New or existing local build-input directory")
     args = parser.parse_args()
-
-    with args.archive.open("rb") as stream:
-        if hashlib.file_digest(stream, "sha256").hexdigest() != ZIP_SHA256:
-            parser.error("OEM archive SHA-256 does not match the reference inner ZIP")
-    with zipfile.ZipFile(args.archive) as archive:
-        image = kernel_image(archive.read("boot.img"))
-        start = image.index(b"IKCFG_ST") + len(b"IKCFG_ST")
-        end = image.index(b"IKCFG_ED", start)
-        # The bench's /proc/config.gz capture had an extra trailing LF.
-        config = zlib.decompress(image[start:end], 31) + b"\n"
-        files = {
-            "kernel-decompressed.bin": image,
-            "kernel.config": config,
-            "udp_tunnel.ko": archive.read(MODULES + "ipv4/udp_tunnel.ko"),
-            "ip6_udp_tunnel.ko": archive.read(MODULES + "ipv6/ip6_udp_tunnel.ko"),
-            "oem-lib/libauth.so": archive.read("system/usr/lib/libauth.so"),
-        }
-        for item in archive.infolist():
-            if item.filename.startswith(WWW) and not item.is_dir():
-                files["oem-www/" + item.filename.removeprefix(WWW)] = archive.read(item)
+    try:
+        files = read_oem_inputs(args.archive)
+        verify_oem_inputs(files)
         for name, data in files.items():
             path = args.output / name
             path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("xb") as stream:
                 stream.write(data)
-    print(f"Extracted {len(files)} build inputs from the verified stock archive")
+    except FileNotFoundError as error:
+        parser.error(f"Required local file is missing: {error.filename}. See docs/source-build.md.")
+    except (OSError, ValueError, KeyError, struct.error, zipfile.BadZipFile, zlib.error) as error:
+        parser.error(str(error))
+    print(f"Extracted and verified {len(files)} build inputs from the stock archive")
 
 
 if __name__ == "__main__":

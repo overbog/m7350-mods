@@ -14,6 +14,7 @@ zx=$repo/experiments/rtl8192es-zx
 (cd "$inputs" && sha256sum -c "$repo/tools/runtime-inputs.sha256")
 mkdir "$work"
 cd "$work"
+python3 "$repo/tools/extract-realtek-firmware.py" "$inputs/zx-linux-3.4.tar.gz" "$work/realtek-firmware"
 mkdir -p toolchains runtime/ko runtime/bin
 tar -xf "$inputs/linaro-mirror.tar.xz" -C toolchains
 # Kbuild supplies its own headers. Omit this toolchain's target libc sysroot,
@@ -53,7 +54,11 @@ build_modules() {
     cp vxlan/vxlan.ko "$runtime/ko"
     mkdir zx-lean
     prefix=linux-3.4-80e1fec813691ceb16567581c3fe4d49e4bab7f3/drivers/net/wireless/rtl8192cd_92es
-    tar --strip-components=5 -xf "$inputs/zx-linux-3.4.tar.gz" -C zx-lean "$prefix"
+    firmware_dir=WlanHAL/Data/8192E
+    tar --exclude="$prefix/$firmware_dir/rtl8192Efw.bin" \
+        --exclude="$prefix/$firmware_dir/rtl8192EfwMP.bin" \
+        --strip-components=5 -xf "$inputs/zx-linux-3.4.tar.gz" -C zx-lean "$prefix"
+    cp "$work/realtek-firmware/"*.bin "zx-lean/$firmware_dir/"
     patch -d zx-lean -p1 --binary --fuzz=0 < "$zx/zx-9x07-port.patch"
     cp -a zx-lean zx-two-vap
     patch -d zx-two-vap -p1 --binary --fuzz=0 < "$zx/zx-9x07-two-vap.patch"
