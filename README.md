@@ -10,5 +10,12 @@ Reuse a TP-Link M7350(EU) v5.2 as an LTE router with routed L2TP/IPsec and optio
 - [Provenance and licenses](docs/licensing.md)
 - [Build and bench procedure](docs/build-and-test.md)
 - [Bench results](docs/bench-results.md)
+- [MikroTik server configuration](docs/vpn-mikrotik-server.md)
 
 The archive catalog describes inputs obtained separately. This checkout is a local release candidate. Project licensing and redistribution status of third-party components are pending review.
+
+## AI usage
+
+Much of this project — code, tests, documentation and configuration — was produced with the help of AI coding assistants (Anthropic's Claude and OpenAI's Codex) acting as directed agents under human supervision. A human operator set the goals, made the design and security decisions, ran the on-device trials, and reviewed the work before it was committed. Commits are recorded under a single project identity ("M7350 Project") rather than per individual author.
+
+AI assistants can be wrong, sometimes confidently. Combined with the security limitation above, treat everything here as a reuse experiment: review anything you depend on and verify its behaviour on your own device.
