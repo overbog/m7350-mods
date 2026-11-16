@@ -181,7 +181,7 @@ int main(int argc, char **argv)
         executable(mock / 'logread', r'cat "$M7350_L2_RUN/syslog"')
         executable(mock / 'sleep', '''
             case "$SCENARIO:$1" in
-                boot_recovery:1|no_lte:1) exit 0 ;;
+                boot_recovery:1|no_lte:1) [ -d "$M7350_VPN_RUN" ] || exit 0 ;;
             esac
             exec /bin/sleep 0.03
         ''')
