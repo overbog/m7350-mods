@@ -2,7 +2,14 @@
 
 Reuse a TP-Link M7350(EU) v5.2 as an LTE router with routed L2TP/IPsec and optional Ethernet over VXLAN. The reference device runs TP-Link firmware **1.0.10 Build 181220 Rel.1066n**, with **Linux 3.18.20**.
 
-> **Security limitation.** This router terminates the VPN. It sees traffic before encryption and stores VPN credentials. A compromised router can expose both. The project keeps the OEM firmware, web stack, kernel and hardware drivers. The 3.18 series was already end of life when its final kernel.org release appeared in May 2019. An available vendor download does not establish continued security maintenance. Treat this as a reuse experiment. For sensitive traffic or a network security boundary, use an actively maintained device. See the [Linux maintainer's announcement](https://lkml.rescloud.iu.edu/1905.2/00686.html).
+> **Security limitation — read before using.** This is a reuse experiment, not a secure product, and it does **no hardening**. It deliberately keeps the OEM firmware, web stack, vendor drivers and the **Linux 3.18.20** kernel — software that has been end of life since 2019 and carries many public, unpatched, well-documented vulnerabilities. Nothing in this project reduces that attack surface, and an available vendor download does not establish continued security maintenance.
+>
+> Assume the device can be taken over. Because it terminates the VPN, it sees traffic before encryption and stores VPN credentials, so a compromise exposes both. Treat the router — and any network segment it sits on — as untrusted:
+>
+> - **Do not place it on a network alongside devices you cannot trust:** smart/IoT devices from unknown or no-longer-supported vendors, old or unsupported IP cameras, other end-of-life or never-supported routers, or computers running software you cannot audit. A network is only as trustworthy as its least trustworthy device, and this device is not trustworthy.
+> - **Do not place it on a network carrying devices or data you need to keep safe.** Keep it on an isolated, disposable segment, separate from anything that matters.
+>
+> The risks of keeping a device with many well-documented vulnerabilities exposed are too high for any use that matters. For sensitive traffic, or as a network security boundary, use an actively maintained device. See the [Linux maintainer's announcement](https://lkml.rescloud.iu.edu/1905.2/00686.html).
 
 - [Development journal](docs/development.md)
 - [Source and archive catalog](docs/archives.md)
