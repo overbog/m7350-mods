@@ -104,6 +104,10 @@ add interface=vxlan-m7350 remote-ip=10.73.51.2
 /interface bridge filter
 add chain=forward in-interface=vxlan-m7350 mac-protocol=ip ip-protocol=udp src-port=67 action=drop
 add chain=input in-interface=vxlan-m7350 mac-protocol=ip ip-protocol=udp src-port=67 action=drop
+# Pin the LAN bridge MTU BEFORE adding the port: with mtu=auto RouterOS drops the
+# whole bridge to the smallest port MTU (1310) and full-size LAN traffic breaks.
+/interface bridge
+set [find where name="<L2_BRIDGE>"] mtu=1500
 /interface bridge port
 add bridge=<L2_BRIDGE> interface=vxlan-m7350 edge=yes bpdu-guard=yes hw=no
 
@@ -111,8 +115,16 @@ add bridge=<L2_BRIDGE> interface=vxlan-m7350 edge=yes bpdu-guard=yes hw=no
 /interface l2tp-server server set enabled=yes
 ```
 
-Two things that trip people up:
+Things that trip people up:
 
+- **Bridge MTU.** A bridge left at `mtu=auto` takes the lowest MTU of its ports.
+  Adding the 1310-byte VXLAN port to your LAN bridge then lowers the MTU for the
+  *whole LAN*, even while the M7350 is offline: TCP handshakes succeed, but
+  full-size replies (e.g. TLS server certificates) are dropped and HTTPS hangs.
+  Set the bridge MTU explicitly to 1500, as above. Better still, keep the
+  overlay on a dedicated bridge or VLAN rather than your main LAN bridge.
+  Frames larger than 1310 bytes still can't reach the M7350 side, so its
+  clients rely on TCP MSS clamping.
 - The ESP PFS group (MODP1024) deliberately differs from the IKE DH group
   (MODP2048) — that is the M7350 offer, keep it.
 - The VXLAN VTEP is the PPP peer `10.73.51.1`, **not** the public IP; using the
